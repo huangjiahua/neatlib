@@ -13,6 +13,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include "util.h"
 
 namespace neatlib {
 
@@ -61,23 +62,23 @@ private:
     };
 
     struct data_node: node {
-        std::unique_ptr<std::pair<const Key, T>> data_ptr_;
+        std::pair<const Key, T> data_ptr_;
 
         data_node(const Key &key, const T &mapped):
-            node(DATA_NODE), data_ptr_(std::make_unique<std::pair<const Key, T>>(key, mapped)) {}
+            node(DATA_NODE), data_ptr_(key, mapped) {}
 
         std::size_t hash() {
-            return Hash()(data_ptr_->first);
+            return Hash()(data_ptr_.first);
         }
     };
 
     using node_ptr = std::unique_ptr<node>;
 
     struct array_node: node {
-        std::unique_ptr<std::array<std::unique_ptr<node>, ARRAY_SIZE>> arr_ptr_;
+        std::array<std::unique_ptr<node>, ARRAY_SIZE> arr_ptr_;
 
         array_node(): node(ARRAY_NODE),
-                      arr_ptr_(std::make_unique<std::array<std::unique_ptr<node>, ARRAY_SIZE>>()) { }
+                      arr_ptr_() { }
         constexpr static std::size_t size() { return ARRAY_SIZE; }
     };
 
@@ -111,11 +112,11 @@ private:
         }
 
         const Key &key() {
-            return static_cast<data_node*>(loc_ref_->get())->data_ptr_->first;
+            return static_cast<data_node*>(loc_ref_->get())->data_ptr_.first;
         }
 
         const std::pair<const Key, T> &value() {
-            return *static_cast<data_node*>(loc_ref_->get())->data_ptr_;
+            return static_cast<data_node*>(loc_ref_->get())->data_ptr_;
         }
 
         // for finding only
@@ -123,11 +124,11 @@ private:
             std::size_t hash = ht.hasher_(key);
             std::size_t level = 0;
             // this will not go out this scope
-            auto curr_arr_ptr = ht.root_node_.arr_ptr_.get();
+            array_node *curr_arr_ptr = &ht.root_node_;
 
             for (; level < ht.max_level_; level++) {
                 std::size_t curr_hash = level_hash(hash, level);
-                std::unique_ptr<node> &node_ptr_ref = curr_arr_ptr->operator[](curr_hash);
+                std::unique_ptr<node> &node_ptr_ref = curr_arr_ptr->arr_ptr_[curr_hash];
                 if (node_ptr_ref == nullptr) {
                     loc_ref_ = nullptr;
                     break;
@@ -136,7 +137,7 @@ private:
                     break;
                 } else {
                     assert(node_ptr_ref->type_ == ARRAY_NODE);
-                    curr_arr_ptr = static_cast<array_node*>(node_ptr_ref.get())->arr_ptr_.get();
+                    curr_arr_ptr = static_cast<array_node*>(node_ptr_ref.get());
                 }
             }
         }
@@ -146,12 +147,12 @@ private:
             std::size_t hash = ht.hasher_(key);
             std::size_t level = 0;
             // this will not go out this scope
-            auto curr_arr_ptr = ht.root_node_.arr_ptr_.get();
+            array_node *curr_arr_ptr = &ht.root_node_;
 
             for (; level < ht.max_level_; level++) {
                 std::size_t curr_hash = level_hash(hash, level);
                 assert(curr_hash <= ARRAY_SIZE);
-                std::unique_ptr<node> &node_ptr_ref = curr_arr_ptr->operator[](curr_hash);
+                std::unique_ptr<node> &node_ptr_ref = curr_arr_ptr->arr_ptr_[curr_hash];
 
                 // this is the place to insert
                 if (node_ptr_ref == nullptr) {
@@ -165,6 +166,7 @@ private:
                     // first, we should judge whether this is the same key with the key to be inserted
                     if (temp_data_ptr->hash() == hash) {
                         // the key is already there, to update the user should use update rather than insert
+                        loc_ref_ = nullptr;
                         break;
                     }
 
@@ -179,13 +181,13 @@ private:
                     auto temp_arr_ptr = static_cast<array_node*>(node_ptr_ref.get());
 
                     std::size_t temp_hash = level_hash(temp_data_ptr->hash(), level + 1);
-                    temp_arr_ptr->arr_ptr_->operator[](temp_hash).reset(temp_data_ptr);
+                    temp_arr_ptr->arr_ptr_[temp_hash].reset(temp_data_ptr);
 
-                    curr_arr_ptr = temp_arr_ptr->arr_ptr_.get();
+                    curr_arr_ptr = temp_arr_ptr;
                     continue;
                 } else {
                     assert(node_ptr_ref->type_ == ARRAY_NODE);
-                    curr_arr_ptr = static_cast<array_node*>(node_ptr_ref.get())->arr_ptr_.get();
+                    curr_arr_ptr = static_cast<array_node*>(node_ptr_ref.get());
                     continue;
                 }
             }

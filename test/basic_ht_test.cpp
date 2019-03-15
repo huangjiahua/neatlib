@@ -2,7 +2,6 @@
 // Created by jiahua on 2019/3/13.
 //
 
-#define NDEBUG
 #include "../neatlib/basic_hash_table.h"
 #include <chrono>
 #include <random>
@@ -12,7 +11,7 @@
 using namespace std;
 using namespace chrono;
 
-constexpr size_t TOTAL_ELEMENTS = 10000;
+constexpr size_t TOTAL_ELEMENTS = 10000000;
 
 int main() {
     vector<size_t> keys(TOTAL_ELEMENTS, 0);
@@ -21,7 +20,7 @@ int main() {
                               std::hash<size_t>,
                               std::equal_to<size_t>,
                               std::allocator<std::pair<const size_t, size_t>>,
-                              8> bht;
+                              8> bht(TOTAL_ELEMENTS);
     default_random_engine en(static_cast<unsigned int>(steady_clock::now().time_since_epoch().count()));
     uniform_int_distribution<size_t> dis(0, 2 * TOTAL_ELEMENTS);
     std::size_t right = 0, right2 = 0, right3 = 0;

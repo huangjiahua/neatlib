@@ -13,6 +13,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <functional>
 #include "util.h"
 
 namespace neatlib {

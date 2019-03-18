@@ -9,28 +9,13 @@
 #include <memory>
 #include <cstddef>
 #include <array>
-#include <queue>
+#include <stack>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
 #include "util.h"
 
 namespace neatlib {
-
-constexpr std::size_t DEFAULT_NEATLIB_HASH_LEVEL = 4;
-
-template <std::size_t B>
-struct get_power2
-{
-    static constexpr int value = 2 * get_power2<B - 1>::value;
-};
-
-template<>
-struct get_power2<0>
-{
-    static constexpr int value = 1;
-};
-
 
 template<class Key, class T, class Hash = std::hash<Key>,
         class KeyEqual = std::equal_to<Key>,
@@ -43,7 +28,8 @@ private:
     constexpr static bool ARRAY_NODE = true;
     constexpr static bool DATA_NODE = false;
 
-    constexpr static std::size_t ARRAY_SIZE = HASH_LEVEL > 10 ? 1024 : get_power2<HASH_LEVEL>::value;
+    constexpr static std::size_t ARRAY_SIZE =
+            static_cast<const size_t>(HASH_LEVEL > 10 ? 65536 : get_power2<HASH_LEVEL>::value);
 
 public:
     using key_type = Key;
@@ -62,40 +48,40 @@ private:
     };
 
     struct data_node: node {
-        std::pair<const Key, T> data_ptr_;
+        std::pair<const Key, T> data_;
 
         data_node(const Key &key, const T &mapped):
-            node(DATA_NODE), data_ptr_(key, mapped) {}
+            node(DATA_NODE), data_(key, mapped) {}
 
         std::size_t hash() {
-            return Hash()(data_ptr_.first);
+            return Hash()(data_.first);
         }
     };
 
     using node_ptr = std::unique_ptr<node>;
 
     struct array_node: node {
-        std::array<std::unique_ptr<node>, ARRAY_SIZE> arr_ptr_;
+        std::array<std::unique_ptr<node>, ARRAY_SIZE> arr_;
 
         array_node(): node(ARRAY_NODE),
-                      arr_ptr_() { }
+                      arr_() { }
         constexpr static std::size_t size() { return ARRAY_SIZE; }
     };
 
     struct array_node_pool {
-        std::queue<std::unique_ptr<array_node>> queue_;
+        std::stack<std::unique_ptr<array_node>> stack_;
 
         std::unique_ptr<array_node> get() {
-            std::unique_ptr<node> n = std::move(queue_.front());
-            queue_.pop();
+            std::unique_ptr<node> n = std::move(stack_.front());
+            stack_.pop();
             return std::move(n);
         }
         array_node *get_ptr() {
-            auto ret = queue_.front().release();
-            queue_.pop();
+            auto ret = stack_.top().release();
+            stack_.pop();
             return ret;
         }
-        void put() { queue_.push(std::make_unique<array_node>()); }
+        void put() { stack_.push(std::make_unique<array_node>()); }
         void put(std::size_t count) {
             for (std::size_t i = 0; i < count; i++) put();
         }
@@ -112,11 +98,11 @@ private:
         }
 
         const Key &key() {
-            return static_cast<data_node*>(loc_ref_->get())->data_ptr_.first;
+            return static_cast<data_node*>(loc_ref_->get())->data_.first;
         }
 
         const std::pair<const Key, T> &value() {
-            return static_cast<data_node*>(loc_ref_->get())->data_ptr_;
+            return static_cast<data_node*>(loc_ref_->get())->data_;
         }
 
         // for finding only
@@ -128,7 +114,7 @@ private:
 
             for (; level < ht.max_level_; level++) {
                 std::size_t curr_hash = level_hash(hash, level);
-                std::unique_ptr<node> &node_ptr_ref = curr_arr_ptr->arr_ptr_[curr_hash];
+                std::unique_ptr<node> &node_ptr_ref = curr_arr_ptr->arr_[curr_hash];
                 if (node_ptr_ref == nullptr) {
                     loc_ref_ = nullptr;
                     break;
@@ -152,7 +138,7 @@ private:
             for (; level < ht.max_level_; level++) {
                 std::size_t curr_hash = level_hash(hash, level);
                 assert(curr_hash <= ARRAY_SIZE);
-                std::unique_ptr<node> &node_ptr_ref = curr_arr_ptr->arr_ptr_[curr_hash];
+                std::unique_ptr<node> &node_ptr_ref = curr_arr_ptr->arr_[curr_hash];
 
                 // this is the place to insert
                 if (node_ptr_ref == nullptr) {
@@ -171,7 +157,7 @@ private:
                     }
 
                     temp_data_ptr = static_cast<data_node*>(node_ptr_ref.release());
-                    if (ht.pool_.queue_.empty()) {
+                    if (ht.pool_.stack_.empty()) {
                         node_ptr_ref = std::make_unique<array_node>();
                     } else {
                         node_ptr_ref.reset(ht.pool_.get_ptr());
@@ -181,7 +167,7 @@ private:
                     auto temp_arr_ptr = static_cast<array_node*>(node_ptr_ref.get());
 
                     std::size_t temp_hash = level_hash(temp_data_ptr->hash(), level + 1);
-                    temp_arr_ptr->arr_ptr_[temp_hash].reset(temp_data_ptr);
+                    temp_arr_ptr->arr_[temp_hash].reset(temp_data_ptr);
 
                     curr_arr_ptr = temp_arr_ptr;
                     continue;
@@ -230,10 +216,10 @@ public:
 
     bool insert(const Key &key, const T &mapped) {
         locator locator_(*this, key, mapped);
-        assert(key_equal_(locator_.key(), key));
-        assert(key_equal_(locator_.value().second, mapped));
         if (locator_.loc_ref_ == nullptr)
             return false;
+        assert(key_equal_(locator_.key(), key));
+        assert(key_equal_(locator_.value().second, mapped));
         ++size_;
         return true;
     }
@@ -268,7 +254,7 @@ public:
         if (locator_.loc_ref_ == nullptr)
             return false;
         auto dn = static_cast<data_node*>(locator_.loc_ref_->get());
-        dn->data_ptr_->second = new_mapped;
+        dn->data_->second = new_mapped;
         return true;
     }
 

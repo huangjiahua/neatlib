@@ -36,4 +36,22 @@ namespace std {
 
 #endif // MAKE_UNIQUE_NOT_SUPPORT
 
+namespace neatlib {
+
+constexpr std::size_t DEFAULT_NEATLIB_HASH_LEVEL = 4;
+
+template <std::size_t B>
+struct get_power2
+{
+    static constexpr int value = 2 * get_power2<B - 1>::value;
+};
+
+template<>
+struct get_power2<0>
+{
+    static constexpr int value = 1;
+};
+
+}
+
 #endif // NEATLIB_UTIL_H

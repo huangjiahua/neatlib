@@ -1,6 +1,7 @@
 #include <atomic>
 #include <memory>
 #include <iostream>
+#include <thread>
 #include <boost/smart_ptr/make_shared.hpp>
 #include <boost/smart_ptr/shared_ptr.hpp>
 #include <boost/smart_ptr/atomic_shared_ptr.hpp>

@@ -259,7 +259,7 @@ public:
         if (locator_.loc_ref_ == nullptr)
             return false;
         auto dn = static_cast<data_node*>(locator_.loc_ref_->get());
-        dn->data_->second = new_mapped;
+        dn->data_.second = new_mapped;
         return true;
     }
 

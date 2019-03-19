@@ -8,15 +8,15 @@
 #include <vector>
 #include <chrono>
 #include <random>
-#include "../neatlib/concurrent_hast_table.h"
+#include "../neatlib/concurrent_hash_table.h"
 #include <functional>
 
 
 using namespace std;
 using namespace chrono;
 
-constexpr size_t RANGE = 999999999;
-constexpr size_t TOTAL_ELEMENTS = 10000000;
+constexpr size_t RANGE = 1000000;
+constexpr size_t TOTAL_ELEMENTS = 1000000;
 constexpr size_t threadNum = 12;
 
 template <typename HT>
@@ -34,12 +34,12 @@ void get_task(HT &ht, vector<size_t> &keys, size_t threadIdx) {
 int main() {
     vector<size_t> keys(TOTAL_ELEMENTS, 0);
     vector<thread> threads(threadNum);
-    neatlib::concurrent_hast_table<size_t,
+    neatlib::concurrent_hash_table<size_t,
                                    size_t,
                                    std::hash<size_t>,
-                                   std::equal_to<>,
+                                   std::equal_to<std::size_t>,
                                    std::allocator<pair<const size_t, const size_t>>,
-                                   4> ht{};
+                                   8> ht{};
     default_random_engine en(static_cast<unsigned int>(steady_clock::now().time_since_epoch().count()));
     uniform_int_distribution<size_t> dis(0, RANGE);
     std::size_t right = 0, right2 = 0, right3 = 0;

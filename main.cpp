@@ -2,14 +2,14 @@
 #include <memory>
 #include <iostream>
 #include <thread>
-#include "neatlib/concurrent_hast_table.h"
+#include "neatlib/concurrent_hash_table.h"
 
 
 using namespace std;
 
 int main() {
 
-    neatlib::concurrent_hast_table<size_t, size_t> ht;
+    neatlib::concurrent_hash_table<size_t, size_t> ht;
     for (size_t i = 0; i < 16; i++) {
         ht.insert(i, 10);
     }

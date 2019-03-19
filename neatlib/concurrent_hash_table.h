@@ -23,7 +23,7 @@ template<class Key, class T, class Hash = std::hash<Key>,
         class KeyEqual = std::equal_to<Key>,
         class Allocator = std::allocator<std::pair<const Key, T>>,
         std::size_t HASH_LEVEL = DEFAULT_NEATLIB_HASH_LEVEL>
-class concurrent_hast_table {
+class concurrent_hash_table {
 private:
     enum class node_type {
         DATA_NODE = 0, ARRAY_NODE
@@ -72,7 +72,7 @@ private:
     };
 
     struct locator {
-        boost::shared_ptr<data_node> loc_ref_ = nullptr;
+        boost::shared_ptr<node> loc_ref_ = nullptr;
 
         static std::size_t level_hash(std::size_t hash, std::size_t level) {
 //            std::size_t mask = (ARRAY_SIZE - 1);
@@ -83,15 +83,16 @@ private:
         }
 
         const Key &key() {
-            return loc_ref_->data_.first;
+            return static_cast<data_node*>(loc_ref_.get())->data_.first;
         }
 
         const std::pair<const Key, const T> &value() {
-            return loc_ref_->data_;
+//            return loc_ref_->data_;
+            return static_cast<data_node*>(loc_ref_.get())->data_;
         }
 
         // for finding only
-        locator(concurrent_hast_table &ht, const Key &key) {
+        locator(concurrent_hash_table &ht, const Key &key) {
             std::size_t hash = ht.hasher_(key);
             std::size_t level = 0;
             array_node *curr_arr_ptr = ht.root_node_.get();
@@ -99,26 +100,23 @@ private:
             for(; level < ht.max_level_; level++) {
                 std::size_t curr_hash = level_hash(hash, level);
                 assert(curr_hash <= ARRAY_SIZE);
-                boost::shared_ptr<node> node_ptr = curr_arr_ptr->arr_[curr_hash].load();
+                loc_ref_ = curr_arr_ptr->arr_[curr_hash].load();
 
-                if (node_ptr == nullptr) {
-                    loc_ref_ = nullptr;
+                if (loc_ref_ == nullptr) {
                     break;
-                } else if (node_ptr->type_ == node_type::DATA_NODE) {
-                    if (hash == static_cast<data_node*>(node_ptr.get())->hash())
-                        loc_ref_ = boost::static_pointer_cast<data_node>(node_ptr);
-                    else
+                } else if (loc_ref_->type_ == node_type::DATA_NODE) {
+                    if (hash != static_cast<data_node*>(loc_ref_.get())->hash())
                         loc_ref_ = nullptr;
                     break;
                 } else {
                     assert(node_ptr->type_ == node_type::ARRAY_NODE);
-                    curr_arr_ptr = static_cast<array_node*>(node_ptr.get());
+                    curr_arr_ptr = static_cast<array_node*>(loc_ref_.get());
                 }
             }
         }
 
         // for insertion only
-        locator(concurrent_hast_table &ht, const Key &key, const T &mapped, insert_type) {
+        locator(concurrent_hash_table &ht, const Key &key, const T &mapped, insert_type) {
             std::size_t hash = ht.hasher_(key);
             std::size_t level = 0;
             bool end = false;
@@ -181,7 +179,7 @@ private:
     };
 
 public:
-    concurrent_hast_table(): size_(0), root_node_(boost::make_shared<array_node>()) {
+    concurrent_hash_table(): size_(0), root_node_(boost::make_shared<array_node>()) {
         std::size_t m = 1, num = ARRAY_SIZE, level = 1;
         std::size_t total_bit = sizeof(Key) * 8;
         if (total_bit < 64) {
@@ -202,7 +200,7 @@ public:
         max_ = m;
     }
 
-    ~concurrent_hast_table() noexcept = default;
+    ~concurrent_hash_table() noexcept = default;
 
     bool insert(const Key &key, const T &mapped) {
         locator locator_(*this, key, mapped, insert_type());
@@ -210,7 +208,7 @@ public:
             return false;
         assert(key_equal_(locator_.key(), key));
         assert(key_equal_(locator_.value().second, mapped));
-//        size_.fetch_add(1);
+//        size_.fetch_add(1, std::memory_order_relaxed);
         return true;
     }
 

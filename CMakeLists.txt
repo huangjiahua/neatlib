@@ -10,4 +10,4 @@ include_directories( ${Boost_INCLUDE_DIRS} )
 add_subdirectory(./neatlib)
 add_subdirectory(./test)
 
-add_executable(neatlib1 main.cpp neatlib/concurrent_hast_table.h)
+add_executable(neatlib1 main.cpp neatlib/concurrent_hash_table.h)

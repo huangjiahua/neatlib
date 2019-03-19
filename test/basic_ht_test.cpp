@@ -2,7 +2,6 @@
 // Created by jiahua on 2019/3/13.
 //
 
-#define NDEBUG
 #include "../neatlib/basic_hash_table.h"
 #include <chrono>
 #include <random>
@@ -19,9 +18,9 @@ int main() {
     neatlib::basic_hash_table<size_t,
                               size_t,
                               std::hash<size_t>,
-                              std::equal_to<>,
+                              std::equal_to<size_t>,
                               std::allocator<std::pair<const size_t, size_t>>,
-                              8> bht(TOTAL_ELEMENTS);
+                              8> bht;
     default_random_engine en(static_cast<unsigned int>(steady_clock::now().time_since_epoch().count()));
     uniform_int_distribution<size_t> dis(0, 2 * TOTAL_ELEMENTS);
     std::size_t right = 0, right2 = 0, right3 = 0;
@@ -38,14 +37,14 @@ int main() {
 
     auto t3 = steady_clock::now();
 
-//    for (const auto &i : keys)
-//        if (bht.update(i, 20))
-//            ++right2;
+    for (const auto &i : keys)
+        if (bht.update(i, 20))
+            ++right2;
     auto t4 = steady_clock::now();
 
-//    for (const auto &i : keys)
-//        if (bht.remove(i))
-//            ++right3;
+    for (const auto &i : keys)
+        if (bht.remove(i))
+            ++right3;
 
     auto t5 = steady_clock::now();
 

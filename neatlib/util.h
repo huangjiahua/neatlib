@@ -55,7 +55,8 @@ struct get_power2<0>
 namespace util {
 
 template <typename Key>
-static std::size_t level_hash(std::size_t hash, std::size_t level, std::size_t arr_size, std::size_t total_level) {
+inline std::size_t level_hash(const std::size_t hash, const std::size_t level, 
+                              const std::size_t arr_size, const std::size_t total_level) {
     std::size_t mask = (arr_size - 1);
     std::size_t ret = (hash >> (total_level * level)) & mask;
     assert(ret < arr_size);

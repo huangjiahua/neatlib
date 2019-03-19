@@ -92,10 +92,11 @@ private:
         std::unique_ptr<node> *loc_ref_ = nullptr;
 
         std::size_t level_hash(std::size_t hash, std::size_t level) {
-            std::size_t mask = (ARRAY_SIZE - 1);
-            std::size_t ret = (hash >> (sizeof(Key) * 8 - HASH_LEVEL * level) ) & mask ;
-            assert(ret < ARRAY_SIZE);
-            return ret;
+//            std::size_t mask = (ARRAY_SIZE - 1);
+//            std::size_t ret = (hash >> (sizeof(Key) * 8 - HASH_LEVEL * level) ) & mask ;
+//            assert(ret < ARRAY_SIZE);
+//            return ret;
+            return util::level_hash<Key>(hash, level, ARRAY_SIZE, HASH_LEVEL);
         }
 
         const Key &key() {
@@ -120,7 +121,10 @@ private:
                     loc_ref_ = nullptr;
                     break;
                 } else if (node_ptr_ref->type_ == DATA_NODE) {
-                    loc_ref_ = &node_ptr_ref;
+                    if (hash == static_cast<data_node*>(node_ptr_ref.get())->hash())
+                        loc_ref_ = &node_ptr_ref;
+                    else
+                        loc_ref_ = nullptr;
                     break;
                 } else {
                     assert(node_ptr_ref->type_ == ARRAY_NODE);

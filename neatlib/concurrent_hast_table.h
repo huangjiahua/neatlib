@@ -74,11 +74,12 @@ private:
     struct locator {
         boost::shared_ptr<data_node> loc_ref_ = nullptr;
 
-        std::size_t level_hash(std::size_t hash, std::size_t level) {
-            std::size_t mask = (ARRAY_SIZE - 1);
-            std::size_t ret = (hash >> (sizeof(Key) * 8 - HASH_LEVEL * level)) & mask;
-            assert(ret < ARRAY_SIZE);
-            return ret;
+        static std::size_t level_hash(std::size_t hash, std::size_t level) {
+//            std::size_t mask = (ARRAY_SIZE - 1);
+//            std::size_t ret = (hash >> (sizeof(Key) * 8 - HASH_LEVEL * level)) & mask;
+//            assert(ret < ARRAY_SIZE);
+//            return ret;
+            return util::level_hash<Key>(hash, level, ARRAY_SIZE, HASH_LEVEL);
         }
 
         const Key &key() {
@@ -91,7 +92,29 @@ private:
 
         // for finding only
         locator(concurrent_hast_table &ht, const Key &key) {
-            // TODO
+            std::size_t hash = ht.hasher_(key);
+            std::size_t level = 0;
+            array_node *curr_arr_ptr = ht.root_node_.get();
+
+            for(; level < ht.max_level_; level++) {
+                std::size_t curr_hash = level_hash(hash, level);
+                assert(curr_hash <= ARRAY_SIZE);
+                boost::shared_ptr<node> node_ptr = curr_arr_ptr->arr_[curr_hash].load();
+
+                if (node_ptr == nullptr) {
+                    loc_ref_ = nullptr;
+                    break;
+                } else if (node_ptr->type_ == node_type::DATA_NODE) {
+                    if (hash == static_cast<data_node*>(node_ptr.get())->hash())
+                        loc_ref_ = boost::static_pointer_cast<data_node>(node_ptr);
+                    else
+                        loc_ref_ = nullptr;
+                    break;
+                } else {
+                    assert(node_ptr->type_ == node_type::ARRAY_NODE);
+                    curr_arr_ptr = static_cast<array_node*>(node_ptr.get());
+                }
+            }
         }
 
         // for insertion only
@@ -99,7 +122,7 @@ private:
             std::size_t hash = ht.hasher_(key);
             std::size_t level = 0;
             bool end = false;
-            boost::shared_ptr<array_node> curr_arr_ptr = ht.root_node_;
+            array_node *curr_arr_ptr = ht.root_node_.get();
 
             for (; level < ht.max_level_ && !end; level++) {
                 std::size_t curr_hash = level_hash(hash, level);
@@ -123,17 +146,22 @@ private:
                             continue;
                         }
                     } else if (node_ptr->type_ == node_type::DATA_NODE) {
+                        // first we should test if this is a duplicate key
+                        if (static_cast<data_node*>(node_ptr.get())->hash() == hash) {
+                            // then insert fail, if user wants to update, update member function should be used
+                            end = true;
+                            break;
+                        }
                         boost::shared_ptr<array_node> tmp_arr_ptr = boost::make_shared<array_node>();
                         std::size_t next_level_hash = level_hash(
-                                boost::static_pointer_cast<data_node>(node_ptr)->hash(),
+                                static_cast<data_node*>(node_ptr.get())->hash(),
                                 level + 1
                                 );
                         tmp_arr_ptr->arr_[next_level_hash].store(node_ptr);
-
                         if (curr_arr_ptr->arr_[curr_hash].compare_exchange_strong(node_ptr,
                                 boost::static_pointer_cast<node>(tmp_arr_ptr))) {
                             // CAS succeeds means to change this atomic to array_node
-                            curr_arr_ptr = tmp_arr_ptr;
+                            curr_arr_ptr = tmp_arr_ptr.get();
                             break;
                         } else {
                             // CAS fails means the atomic was changed by other threads
@@ -144,7 +172,7 @@ private:
                         }
                     } else {
                         assert(node_ptr->type_ == node_type::ARRAY_NODE);
-                        curr_arr_ptr = boost::static_pointer_cast<array_node>(node_ptr);
+                        curr_arr_ptr = static_cast<array_node*>(node_ptr.get());
                     }
                 }
             }
@@ -182,7 +210,7 @@ public:
             return false;
         assert(key_equal_(locator_.key(), key));
         assert(key_equal_(locator_.value().second, mapped));
-        size_.fetch_add(1);
+//        size_.fetch_add(1);
         return true;
     }
 

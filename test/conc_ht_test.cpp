@@ -15,9 +15,9 @@
 using namespace std;
 using namespace chrono;
 
-constexpr size_t RANGE = 1000000;
-constexpr size_t TOTAL_ELEMENTS = 1000000;
-constexpr size_t threadNum = 12;
+constexpr size_t RANGE = 20000000;
+constexpr size_t TOTAL_ELEMENTS = 10000000;
+constexpr size_t threadNum = 4;
 
 template <typename HT>
 void insert_task(HT &ht, vector<size_t> &keys, size_t threadIdx) {

@@ -61,6 +61,9 @@ private:
         data_node(const Key &key, const T &mapped):
             node(node_type::DATA_NODE), data_(key, mapped), hash_(Hash()(key)) { }
 
+        data_node(const Key &key, const T &mapped, const std::size_t h):
+            node(node_type::DATA_NODE), data_(key, mapped), hash_(h) { }
+
         std::size_t hash() const { return hash_; }
     };
 
@@ -109,7 +112,7 @@ private:
                         loc_ref_ = nullptr;
                     break;
                 } else {
-                    assert(node_ptr->type_ == node_type::ARRAY_NODE);
+                    assert(loc_ref_->type_ == node_type::ARRAY_NODE);
                     curr_arr_ptr = static_cast<array_node*>(loc_ref_.get());
                 }
             }
@@ -125,57 +128,58 @@ private:
             for (; level < ht.max_level_ && !end; level++) {
                 std::size_t curr_hash = level_hash(hash, level);
                 assert(curr_hash <= ARRAY_SIZE);
-                boost::shared_ptr<node> node_ptr = curr_arr_ptr->arr_[curr_hash].load();
+                loc_ref_ = curr_arr_ptr->arr_[curr_hash].load();
+                int fail = 0;
 
-                for (int fail = 0; fail < FAIL_LIMIT; fail++) {
-                    if (node_ptr == nullptr) {
+                for ( ; fail < FAIL_LIMIT; fail++) {
+                    if (!loc_ref_.get()) {
                         boost::shared_ptr<node> tmp_ptr(boost::static_pointer_cast<node>(
-                                boost::make_shared<data_node>(key, mapped)));
-                        if (curr_arr_ptr->arr_[curr_hash].compare_exchange_strong(node_ptr,
+                                boost::make_shared<data_node>(key, mapped, hash)));
+                        if (curr_arr_ptr->arr_[curr_hash].compare_exchange_strong(loc_ref_,
                                 tmp_ptr)) {
                             // CAS succeeds means a successful insertion
-                            loc_ref_ = boost::static_pointer_cast<data_node>(tmp_ptr);
                             end = true;
                             break;
                         } else {
                             // CAS fails means the atomic ptr just got changed
-                            assert(node_ptr->type_ == node_type::ARRAY_NODE ||
-                                   node_ptr->type_ == node_type::DATA_NODE);
+//                            assert(loc_ref_->type_ == node_type::ARRAY_NODE ||
+//                                   loc_ref_->type_ == node_type::DATA_NODE);
                             continue;
                         }
-                    } else if (node_ptr->type_ == node_type::DATA_NODE) {
+                    } else if (loc_ref_.get()->type_ == node_type::DATA_NODE) {
                         // first we should test if this is a duplicate key
-                        if (static_cast<data_node*>(node_ptr.get())->hash() == hash) {
+                        if (static_cast<data_node*>(loc_ref_.get())->hash() == hash) {
                             // then insert fail, if user wants to update, update member function should be used
+                            loc_ref_ = nullptr;
                             end = true;
                             break;
                         }
                         boost::shared_ptr<array_node> tmp_arr_ptr = boost::make_shared<array_node>();
                         std::size_t next_level_hash = level_hash(
-                                static_cast<data_node*>(node_ptr.get())->hash(),
+                                static_cast<data_node*>(loc_ref_.get())->hash(),
                                 level + 1
                                 );
-                        tmp_arr_ptr->arr_[next_level_hash].store(node_ptr);
-                        if (curr_arr_ptr->arr_[curr_hash].compare_exchange_strong(node_ptr,
+                        tmp_arr_ptr.get()->arr_[next_level_hash].store(loc_ref_);
+                        if (curr_arr_ptr->arr_[curr_hash].compare_exchange_strong(loc_ref_,
                                 boost::static_pointer_cast<node>(tmp_arr_ptr))) {
                             // CAS succeeds means to change this atomic to array_node
                             curr_arr_ptr = tmp_arr_ptr.get();
                             break;
                         } else {
                             // CAS fails means the atomic was changed by other threads
-                            assert(node_ptr == nullptr ||
-                                   node_ptr->type_ == node_type::DATA_NODE ||
-                                   node_ptr->type_ == node_type::ARRAY_NODE);
+//                            assert(loc_ref_ == nullptr ||
+//                                   loc_ref_->type_ == node_type::DATA_NODE ||
+//                                   loc_ref_->type_ == node_type::ARRAY_NODE);
                             continue;
                         }
                     } else {
-                        assert(node_ptr->type_ == node_type::ARRAY_NODE);
-                        curr_arr_ptr = static_cast<array_node*>(node_ptr.get());
+//                        assert(loc_ref_->type_ == node_type::ARRAY_NODE);
+                        curr_arr_ptr = static_cast<array_node*>(loc_ref_.get());
                     }
                 }
+                if (fail == FAIL_LIMIT) loc_ref_ = nullptr;
             }
         }
-
     };
 
 public:

@@ -18,5 +18,6 @@ int main() {
     auto p = ht.get(16);
     cout << ht.size() << endl;
     cout << p.second << endl;
+    cout << std::thread::hardware_concurrency() << endl;
     return 0;
 }

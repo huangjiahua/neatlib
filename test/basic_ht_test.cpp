@@ -11,6 +11,7 @@
 using namespace std;
 using namespace chrono;
 
+constexpr size_t RANGE = 20000000;
 constexpr size_t TOTAL_ELEMENTS = 10000000;
 
 int main() {
@@ -22,7 +23,7 @@ int main() {
                               std::allocator<std::pair<const size_t, size_t>>,
                               8> bht;
     default_random_engine en(static_cast<unsigned int>(steady_clock::now().time_since_epoch().count()));
-    uniform_int_distribution<size_t> dis(0, 2 * TOTAL_ELEMENTS);
+    uniform_int_distribution<size_t> dis(0, RANGE);
     std::size_t right = 0, right2 = 0, right3 = 0;
     for (auto &i : keys) i = dis(en);
 

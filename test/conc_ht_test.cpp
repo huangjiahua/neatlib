@@ -17,7 +17,7 @@ using namespace chrono;
 
 constexpr size_t RANGE = 20000000;
 constexpr size_t TOTAL_ELEMENTS = 10000000;
-constexpr size_t threadNum = 4;
+constexpr size_t threadNum = 12;
 
 template <typename HT>
 void insert_task(HT &ht, vector<size_t> &keys, size_t threadIdx) {
@@ -38,8 +38,9 @@ int main() {
                                    size_t,
                                    std::hash<size_t>,
                                    std::equal_to<std::size_t>,
-                                   std::allocator<pair<const size_t, const size_t>>,
-                                   8> ht{};
+                                   std::allocator<std::pair<const size_t, const size_t>>,
+                                   8,
+                                   16> ht{};
     default_random_engine en(static_cast<unsigned int>(steady_clock::now().time_since_epoch().count()));
     uniform_int_distribution<size_t> dis(0, RANGE);
     std::size_t right = 0, right2 = 0, right3 = 0;

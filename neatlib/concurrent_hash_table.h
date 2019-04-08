@@ -37,8 +37,7 @@ private:
             static_cast<const std::size_t>(get_power2<ROOT_HASH_LEVEL>::value);
 
     using insert_type = std::integral_constant<int, 0>;
-    using update_type = std::integral_constant<int, 1>;
-    using remove_type = std::integral_constant<int, 2>;
+    using modify_type = std::integral_constant<int, 1>;
 
 public:
     using key_type = Key;
@@ -150,6 +149,17 @@ private:
                     curr_arr_ptr = static_cast<array_node*>(loc_ref_.get());
                 }
             }
+        }
+
+        locator(concurrent_hash_table &ht, const Key &key, const T *mappedp, modify_type) {
+            bool remove_flag = false;
+            if (!mappedp)
+                remove_flag = true;
+
+            std::size_t hash = ht.hasher_(key);
+            std::size_t level = 0;
+            bool end = false;
+            array_node *curr_arr_ptr = nullptr;
         }
 
         // for insertion only
@@ -273,12 +283,19 @@ public:
     }
 
     bool update(const Key &key, const T &new_mapped) {
-        // TODO
+        locator locator_(*this, key, &new_mapped, modify_type());
+        if (locator_.loc_ref_ == nullptr)
+            return false;
+        assert(key_equal_(locator_.key(), key));
+        assert(key_equal_(locator_.value().second, new_mapped));
         return true;
     }
 
     bool remove(const Key &key) {
         // TODO
+        locator locator_(*this, key, nullptr, modify_type());
+        if (locator_.loc_ref_ == nullptr)
+            return false;
         return true;
     }
 

@@ -21,10 +21,10 @@ namespace neatlib {
 constexpr int FAIL_LIMIT = 20;
 
 template<class Key, class T, class Hash = std::hash<Key>,
-        class KeyEqual = std::equal_to<Key>,
-        class Allocator = std::allocator<std::pair<const Key, T>>,
         std::size_t HASH_LEVEL = DEFAULT_NEATLIB_HASH_LEVEL,
-        std::size_t ROOT_HASH_LEVEL = DEFAULT_NEATLIB_HASH_LEVEL>
+        std::size_t ROOT_HASH_LEVEL = DEFAULT_NEATLIB_HASH_LEVEL,
+        template <typename> class ATOMIC_SHARED_PTR = boost::atomic_shared_ptr,
+        template <typename> class SHARED_PTR = boost::shared_ptr>
 class concurrent_hash_table {
 private:
     enum class node_type {
@@ -45,8 +45,8 @@ public:
     using value_type = std::pair<const Key, const T>;
     using difference_type = std::ptrdiff_t;
     using hasher = Hash;
-    using key_equal = KeyEqual;
-    using allocator_type = Allocator;
+    template <typename TYPE> using atomic_shared_ptr = ATOMIC_SHARED_PTR<TYPE>;
+    template <typename TYPE> using shared_ptr = SHARED_PTR<TYPE>;
 
 private:
     struct node {
@@ -68,23 +68,23 @@ private:
     };
 
     struct array_node: node {
-        std::array<boost::atomic_shared_ptr<node>, ARRAY_SIZE> arr_;
+        std::array<atomic_shared_ptr<node>, ARRAY_SIZE> arr_;
         array_node(): node(node_type::ARRAY_NODE), arr_() {}
         constexpr static std::size_t size() { return ARRAY_SIZE; }
     };
 
     struct reserved_pool {
-        boost::lockfree::stack<boost::shared_ptr<data_node>> data_st_;
+        boost::lockfree::stack<shared_ptr<data_node>> data_st_;
 
         reserved_pool(): data_st_() {}
         void put() {
-            data_st_.push(boost::make_shared<data_node>());
+            data_st_.push(shared_ptr<data_node>());
         }
         void put(std::size_t sz) {
             for (std::size_t i = 0; i < sz; i++) put();
         }
-        boost::shared_ptr<data_node> get_data_node(const Key &key, const T &mapped, std::size_t hash) {
-            boost::shared_ptr<data_node> p(nullptr);
+        shared_ptr<data_node> get_data_node(const Key &key, const T &mapped, std::size_t hash) {
+            shared_ptr<data_node> p(nullptr);
             data_st_.pop(p);
             p->data_.first = key;
             p->data_.second = mapped;
@@ -94,7 +94,7 @@ private:
     };
 
     struct locator {
-        boost::shared_ptr<node> loc_ref_ = nullptr;
+        shared_ptr<node> loc_ref_ = nullptr;
 
         static std::size_t level_hash(std::size_t hash, std::size_t level) {
 //            std::size_t mask = (ARRAY_SIZE - 1);
@@ -160,6 +160,50 @@ private:
             std::size_t level = 0;
             bool end = false;
             array_node *curr_arr_ptr = nullptr;
+
+            for (; level < ht.max_level_ && !end; level++) {
+                std::size_t curr_hash = 0;
+                atomic_shared_ptr<node> *atomic_pos = nullptr;
+                if (level) {
+                    curr_hash = level_hash(hash, level);
+                    assert(curr_hash <= ARRAY_SIZE);
+                    atomic_pos = &curr_arr_ptr->arr_[curr_hash];
+                    loc_ref_ = atomic_pos->load();
+                } else {
+                    curr_hash = root_hash(hash);
+                    assert(curr_hash <= ROOT_ARRAY_SIZE);
+                    atomic_pos = &ht.root_arr_[curr_hash];
+                    loc_ref_ = atomic_pos->load();
+                }
+                int fail = 0;
+                for (; fail < FAIL_LIMIT; fail++) {
+                    if (!loc_ref_.get()) {
+                        // noting to update;
+                        loc_ref_ = nullptr;
+                        return;
+                    } else if (loc_ref_.get()->type_ == node_type::DATA_NODE) {
+                        shared_ptr<node> tmp_ptr(nullptr);
+                        if (!remove_flag) {
+                            tmp_ptr.reset(static_cast<node *>(new data_node(key, *mappedp, hash)));
+                        }
+                        if (atomic_pos->compare_exchange_strong(loc_ref_,
+                                                                tmp_ptr)) {
+                            // CAS succeeds means a successful insertion
+                            loc_ref_ = std::move(tmp_ptr);
+                            end = true;
+                            break;
+                        } else {
+                            // CAS fails means the atomic ptr just got changed
+                            assert(loc_ref_->type_ == node_type::ARRAY_NODE ||
+                                   loc_ref_->type_ == node_type::DATA_NODE);
+                            continue;
+                        }
+                    } else {
+                        curr_arr_ptr = static_cast<array_node*>(loc_ref_.get());
+                    }
+                    if (fail == FAIL_LIMIT) loc_ref_ = nullptr;
+                }
+            }
         }
 
         // for insertion only
@@ -171,14 +215,13 @@ private:
 
             for (; level < ht.max_level_ && !end; level++) {
                 std::size_t curr_hash = 0;
-                boost::atomic_shared_ptr<node> *atomic_pos = nullptr;
+                atomic_shared_ptr<node> *atomic_pos = nullptr;
                 if (level) {
                     curr_hash = level_hash(hash, level);
                     assert(curr_hash <= ARRAY_SIZE);
                     atomic_pos = &curr_arr_ptr->arr_[curr_hash];
                     loc_ref_ = atomic_pos->load();
-                }
-                else {
+                } else {
                     curr_hash = root_hash(hash);
                     assert(curr_hash <= ROOT_ARRAY_SIZE);
                     atomic_pos = &ht.root_arr_[curr_hash];
@@ -188,8 +231,8 @@ private:
 
                 for ( ; fail < FAIL_LIMIT; fail++) {
                     if (!loc_ref_.get()) {
-                        boost::shared_ptr<node> tmp_ptr(boost::static_pointer_cast<node>(
-                                boost::make_shared<data_node>(key, mapped, hash)));
+                        shared_ptr<node>
+                                tmp_ptr(static_cast<node*>(new data_node(key, mapped, hash)));
                         if (atomic_pos->compare_exchange_strong(loc_ref_,
                                 tmp_ptr)) {
                             // CAS succeeds means a successful insertion
@@ -205,19 +248,19 @@ private:
                     } else if (loc_ref_.get()->type_ == node_type::DATA_NODE) {
                         // first we should test if this is a duplicate key
                         if (static_cast<data_node*>(loc_ref_.get())->hash() == hash) {
-                            // then insert fail, if user wants to update, update member function should be used
+                            // then insert fail, if user wants to update,
+                            // update member function should be used
                             loc_ref_ = nullptr;
                             end = true;
                             break;
                         }
-                        boost::shared_ptr<array_node> tmp_arr_ptr = boost::make_shared<array_node>();
+                        shared_ptr<array_node> tmp_arr_ptr(new array_node());
                         std::size_t next_level_hash = level_hash(
                                 static_cast<data_node*>(loc_ref_.get())->hash(),
                                 level + 1
                                 );
                         tmp_arr_ptr.get()->arr_[next_level_hash].store(loc_ref_);
-                        if (atomic_pos->compare_exchange_strong(loc_ref_,
-                                boost::static_pointer_cast<node>(tmp_arr_ptr))) {
+                        if (atomic_pos->compare_exchange_strong(loc_ref_, tmp_arr_ptr)) {
                             // CAS succeeds means to change this atomic to array_node
                             curr_arr_ptr = tmp_arr_ptr.get();
                             break;
@@ -264,6 +307,10 @@ public:
 
     ~concurrent_hash_table() noexcept = default;
 
+    bool is_lock_free() const noexcept {
+        return atomic_shared_ptr<node>().is_lock_free();
+    }
+
     bool insert(const Key &key, const T &mapped) {
         locator locator_(*this, key, mapped, insert_type());
         if (locator_.loc_ref_ == nullptr)
@@ -304,8 +351,7 @@ public:
     }
 
 private:
-    std::array<boost::atomic_shared_ptr<node>, ROOT_ARRAY_SIZE> root_arr_;
-    KeyEqual key_equal_;
+    std::array<atomic_shared_ptr<node>, ROOT_ARRAY_SIZE> root_arr_;
     Hash hasher_;
 //    reserved_pool pool_;
     std::atomic<std::size_t> size_;

@@ -1,7 +1,6 @@
 //
 // Created by jiahua on 2019/3/16.
 //
-
 #ifndef NEATLIB_CONCURRENT_HAST_TABLE_H
 #define NEATLIB_CONCURRENT_HAST_TABLE_H
 #include <boost/smart_ptr/shared_ptr.hpp>
@@ -315,8 +314,6 @@ public:
         locator locator_(*this, key, mapped, insert_type());
         if (locator_.loc_ref_ == nullptr)
             return false;
-        assert(key_equal_(locator_.key(), key));
-        assert(key_equal_(locator_.value().second, mapped));
 //        size_.fetch_add(1, std::memory_order_relaxed);
         return true;
     }
@@ -325,7 +322,6 @@ public:
         locator locator_(*this, key);
         if (locator_.loc_ref_ == nullptr)
             throw std::out_of_range("No Element Found");
-        assert(key_equal_(locator_.key(), key));
         return locator_.value();
     }
 
@@ -333,8 +329,6 @@ public:
         locator locator_(*this, key, &new_mapped, modify_type());
         if (locator_.loc_ref_ == nullptr)
             return false;
-        assert(key_equal_(locator_.key(), key));
-        assert(key_equal_(locator_.value().second, new_mapped));
         return true;
     }
 

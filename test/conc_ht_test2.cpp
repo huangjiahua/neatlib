@@ -10,6 +10,7 @@
 #include <random>
 #include "../neatlib/concurrent_hash_table.h"
 #include <functional>
+#include <folly/concurrency/AtomicSharedPtr.h>
 
 
 using namespace std;
@@ -44,6 +45,9 @@ void remove_task(HT &ht, vector<size_t> &keys, size_t threadIdx) {
     }
 }
 
+template <typename T> using lockfree_atomic_shared_ptr = folly::atomic_shared_ptr<T>;
+template <typename T> using lockfree_shared_ptr = folly::detail::shared_ptr_internals::CountedPtr<T>;
+
 int main() {
     vector<size_t> keys(TOTAL_ELEMENTS, 0);
     vector<thread> threads(threadNum);
@@ -51,7 +55,9 @@ int main() {
                                    size_t,
                                    std::hash<size_t>,
                                    4,
-                                   8> ht{};
+                                   8,
+                                   lockfree_atomic_shared_ptr,
+                                   lockfree_shared_ptr> ht{};
     default_random_engine en(static_cast<unsigned int>(steady_clock::now().time_since_epoch().count()));
     uniform_int_distribution<size_t> dis(0, RANGE);
     std::size_t right = 0, right2 = 0, right3 = 0;

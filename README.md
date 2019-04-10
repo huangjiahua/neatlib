@@ -4,7 +4,7 @@
 
 ## Features
 1. Fast and safe sequential hash table basic_hash_table.
-2. Fast and safe wait-free concurrent hash table concurrent_hash_table.
+2. Fast and safe wait-free concurrent hash table concurrent_hash_table. (partly done)
 
 ## TODO
 1. Add lock-free support to concurrent hash table.

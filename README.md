@@ -7,8 +7,8 @@
 2. Fast and safe wait-free concurrent hash table concurrent_hash_table. 
 
 ## TODO
-1. Add lock-free support to concurrent hash table.
-2. Achieve better memory reclamation policy (currently using reference counting). (partly done)
+1. Add lock-free support to concurrent hash table.(partly done)
+2. Achieve better memory reclamation policy (currently using reference counting). 
 
 
 ## Building

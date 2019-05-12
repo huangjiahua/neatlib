@@ -10,6 +10,7 @@
 #include <chrono>
 #include <random>
 #include "../neatlib/concurrent_hash_table.h"
+#include "neatlib/lock_free_hash_table.h"
 #include <functional>
 
 

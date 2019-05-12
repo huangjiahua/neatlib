@@ -129,12 +129,12 @@ private:
                 if (level) {
                     curr_hash = level_hash(hash, level);
                     assert(curr_hash <= ARRAY_SIZE);
-                    loc_ref_ = curr_arr_ptr->arr_[curr_hash].load();
+                    loc_ref_ = curr_arr_ptr->arr_[curr_hash].load(std::memory_order_relaxed);
                 }
                 else {
                     curr_hash = root_hash(hash);
                     assert(curr_hash <= ROOT_ARRAY_SIZE);
-                    loc_ref_ = ht.root_arr_[curr_hash].load();
+                    loc_ref_ = ht.root_arr_[curr_hash].load(std::memory_order_relaxed);
                 }
 
                 if (!loc_ref_.get()) {
@@ -323,6 +323,11 @@ public:
         if (locator_.loc_ref_ == nullptr)
             throw std::out_of_range("No Element Found");
         return locator_.value();
+    }
+
+    const std::pair<const Key, const T>* unsafe_get(const Key &key) {
+        locator locator_(*this, key);
+        return &static_cast<data_node*>(locator_.loc_ref_.get())->data_;
     }
 
     bool update(const Key &key, const T &new_mapped) {

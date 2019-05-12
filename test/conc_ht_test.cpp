@@ -16,7 +16,7 @@ using namespace std;
 using namespace chrono;
 
 constexpr size_t RANGE = 20000000;
-constexpr size_t TOTAL_ELEMENTS = 10000000;
+constexpr size_t TOTAL_ELEMENTS = 100000000;
 constexpr size_t threadNum = 12;
 
 template <typename HT>

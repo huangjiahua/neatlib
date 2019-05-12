@@ -22,7 +22,7 @@ template<class Key, class T, class Hash = std::hash<Key>,
         class KeyEqual = std::equal_to<Key>,
         class Allocator = std::allocator<std::pair<const Key, T>>,
         std::size_t HASH_LEVEL = DEFAULT_NEATLIB_HASH_LEVEL>
-class basic_hash_table {
+class BasicHashTable {
 private:
     using node_type = bool;
 
@@ -45,14 +45,14 @@ private:
     struct node {
         node_type type_;
 
-        node(node_type type): type_(type) {}
+        node(node_type type) : type_(type) {}
     };
 
-    struct data_node: node {
+    struct data_node : node {
         std::pair<const Key, T> data_;
 
-        data_node(const Key &key, const T &mapped):
-            node(DATA_NODE), data_(key, mapped) {}
+        data_node(const Key &key, const T &mapped) :
+                node(DATA_NODE), data_(key, mapped) {}
 
         std::size_t hash() {
             return Hash()(data_.first);
@@ -61,11 +61,12 @@ private:
 
     using node_ptr = std::unique_ptr<node>;
 
-    struct array_node: node {
+    struct array_node : node {
         std::array<std::unique_ptr<node>, ARRAY_SIZE> arr_;
 
-        array_node(): node(ARRAY_NODE),
-                      arr_() { }
+        array_node() : node(ARRAY_NODE),
+                       arr_() {}
+
         constexpr static std::size_t size() { return ARRAY_SIZE; }
     };
 
@@ -77,12 +78,15 @@ private:
             stack_.pop();
             return std::move(n);
         }
+
         array_node *get_ptr() {
             auto ret = stack_.top().release();
             stack_.pop();
             return ret;
         }
+
         void put() { stack_.push(std::make_unique<array_node>()); }
+
         void put(std::size_t count) {
             for (std::size_t i = 0; i < count; i++) put();
         }
@@ -100,15 +104,15 @@ private:
         }
 
         const Key &key() {
-            return static_cast<data_node*>(loc_ref_->get())->data_.first;
+            return static_cast<data_node *>(loc_ref_->get())->data_.first;
         }
 
         const std::pair<const Key, T> &value() {
-            return static_cast<data_node*>(loc_ref_->get())->data_;
+            return static_cast<data_node *>(loc_ref_->get())->data_;
         }
 
         // for finding only
-        explicit locator(basic_hash_table &ht, const Key &key) {
+        explicit locator(BasicHashTable &ht, const Key &key) {
             std::size_t hash = ht.hasher_(key);
             std::size_t level = 0;
             // this will not go out this scope
@@ -121,20 +125,20 @@ private:
                     loc_ref_ = nullptr;
                     break;
                 } else if (node_ptr_ref->type_ == DATA_NODE) {
-                    if (hash == static_cast<data_node*>(node_ptr_ref.get())->hash())
+                    if (hash == static_cast<data_node *>(node_ptr_ref.get())->hash())
                         loc_ref_ = &node_ptr_ref;
                     else
                         loc_ref_ = nullptr;
                     break;
                 } else {
                     assert(node_ptr_ref->type_ == ARRAY_NODE);
-                    curr_arr_ptr = static_cast<array_node*>(node_ptr_ref.get());
+                    curr_arr_ptr = static_cast<array_node *>(node_ptr_ref.get());
                 }
             }
         }
 
         // for insertion only
-        locator(basic_hash_table &ht, const Key &key, const T &mapped) {
+        locator(BasicHashTable &ht, const Key &key, const T &mapped) {
             std::size_t hash = ht.hasher_(key);
             std::size_t level = 0;
             // this will not go out this scope
@@ -145,23 +149,23 @@ private:
                 assert(curr_hash <= ARRAY_SIZE);
                 std::unique_ptr<node> &node_ptr_ref = curr_arr_ptr->arr_[curr_hash];
 
-                // this is the place to insert
+                // this is the place to Insert
                 if (node_ptr_ref == nullptr) {
                     node_ptr_ref = std::make_unique<data_node>(key, mapped);
                     loc_ref_ = &node_ptr_ref;
                     break;
                 } else if (node_ptr_ref->type_ == DATA_NODE) {
                     // this will not go out this scope
-                    data_node *temp_data_ptr = static_cast<data_node*>(node_ptr_ref.get());
+                    data_node *temp_data_ptr = static_cast<data_node *>(node_ptr_ref.get());
 
                     // first, we should judge whether this is the same key with the key to be inserted
                     if (temp_data_ptr->hash() == hash) {
-                        // the key is already there, to update the user should use update rather than insert
+                        // the key is already there, to Update the user should use Update rather than Insert
                         loc_ref_ = nullptr;
                         break;
                     }
 
-                    temp_data_ptr = static_cast<data_node*>(node_ptr_ref.release());
+                    temp_data_ptr = static_cast<data_node *>(node_ptr_ref.release());
                     if (ht.pool_.stack_.empty()) {
                         node_ptr_ref = std::make_unique<array_node>();
                     } else {
@@ -169,7 +173,7 @@ private:
                     }
 
                     // this will not go out this scope
-                    auto temp_arr_ptr = static_cast<array_node*>(node_ptr_ref.get());
+                    auto temp_arr_ptr = static_cast<array_node *>(node_ptr_ref.get());
 
                     std::size_t temp_hash = level_hash(temp_data_ptr->hash(), level + 1);
                     temp_arr_ptr->arr_[temp_hash].reset(temp_data_ptr);
@@ -178,7 +182,7 @@ private:
                     continue;
                 } else {
                     assert(node_ptr_ref->type_ == ARRAY_NODE);
-                    curr_arr_ptr = static_cast<array_node*>(node_ptr_ref.get());
+                    curr_arr_ptr = static_cast<array_node *>(node_ptr_ref.get());
                     continue;
                 }
             }
@@ -186,19 +190,18 @@ private:
     };
 
 public:
-    basic_hash_table() {
+    BasicHashTable() {
         std::size_t m = 1, num = ARRAY_SIZE, level = 1;
         std::size_t total_bit = sizeof(Key) * 8;
         if (total_bit < 64) {
             for (std::size_t i = 0; i < total_bit; i++)
                 m *= 2;
-            for ( ; num < m; num += num * ARRAY_SIZE)
+            for (; num < m; num += num * ARRAY_SIZE)
                 level++;
-        }
-        else {
+        } else {
             m = std::numeric_limits<std::size_t>::max();
             auto m2 = m / 2;
-            for ( ; num < m2; num += num * ARRAY_SIZE)
+            for (; num < m2; num += num * ARRAY_SIZE)
                 level++;
             level++;
         }
@@ -206,11 +209,12 @@ public:
         max_level_ = level;
         max_ = m;
     };
-    explicit basic_hash_table(std::size_t capacity): basic_hash_table() {
-        reserve(capacity);
+
+    explicit BasicHashTable(std::size_t capacity) : BasicHashTable() {
+        Reserve(capacity);
     }
 
-    void reserve(std::size_t new_cap) {
+    void Reserve(std::size_t new_cap) {
         std::size_t new_arr = 0;
 
         if (new_cap % ARRAY_SIZE) new_arr = new_cap / ARRAY_SIZE;
@@ -219,7 +223,7 @@ public:
         pool_.put(new_arr);
     }
 
-    bool insert(const Key &key, const T &mapped) {
+    bool Insert(const Key &key, const T &mapped) {
         locator locator_(*this, key, mapped);
         if (locator_.loc_ref_ == nullptr)
             return false;
@@ -229,7 +233,7 @@ public:
         return true;
     }
 
-    std::pair<const Key, T> get(const Key &key) {
+    std::pair<const Key, T> Get(const Key &key) {
         locator locator_(*this, key);
         if (locator_.loc_ref_ == nullptr)
             throw std::out_of_range("No Element Found");
@@ -237,7 +241,7 @@ public:
         return locator_.value();
     }
 
-    std::shared_ptr<std::pair<const Key, T>> find(const Key &key) {
+    std::shared_ptr<std::pair<const Key, T>> Find(const Key &key) {
         locator locator_(*this, key);
         if (locator_.loc_ref_ == nullptr)
             return nullptr;
@@ -245,7 +249,7 @@ public:
         return std::make_shared<std::pair<const Key, T>>(locator_.value());
     }
 
-    bool remove(const Key &key) {
+    bool Remove(const Key &key) {
         locator locator_(*this, key);
         if (locator_.loc_ref_ == nullptr)
             return false;
@@ -254,19 +258,18 @@ public:
         return true;
     }
 
-    bool update(const Key &key, const T &new_mapped) {
+    bool Update(const Key &key, const T &new_mapped) {
         locator locator_(*this, key);
         if (locator_.loc_ref_ == nullptr)
             return false;
-        auto dn = static_cast<data_node*>(locator_.loc_ref_->get());
+        auto dn = static_cast<data_node *>(locator_.loc_ref_->get());
         dn->data_.second = new_mapped;
         return true;
     }
 
-    std::size_t size() const {
+    std::size_t Size() const {
         return size_;
     }
-
 
 
 private:

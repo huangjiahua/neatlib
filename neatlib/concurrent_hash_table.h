@@ -3,6 +3,7 @@
 //
 #ifndef NEATLIB_CONCURRENT_HAST_TABLE_H
 #define NEATLIB_CONCURRENT_HAST_TABLE_H
+
 #include <boost/smart_ptr/shared_ptr.hpp>
 #include <boost/smart_ptr/make_shared.hpp>
 #include <boost/smart_ptr/atomic_shared_ptr.hpp>
@@ -22,9 +23,9 @@ constexpr int FAIL_LIMIT = 20;
 template<class Key, class T, class Hash = std::hash<Key>,
         std::size_t HASH_LEVEL = DEFAULT_NEATLIB_HASH_LEVEL,
         std::size_t ROOT_HASH_LEVEL = DEFAULT_NEATLIB_HASH_LEVEL,
-        template <typename> class ATOMIC_SHARED_PTR = boost::atomic_shared_ptr,
-        template <typename> class SHARED_PTR = boost::shared_ptr>
-class concurrent_hash_table {
+        template<typename> class ATOMIC_SHARED_PTR = boost::atomic_shared_ptr,
+        template<typename> class SHARED_PTR = boost::shared_ptr>
+class ConcurrentHashTable {
 private:
     enum class node_type {
         DATA_NODE = 0, ARRAY_NODE
@@ -44,44 +45,50 @@ public:
     using value_type = std::pair<const Key, const T>;
     using difference_type = std::ptrdiff_t;
     using hasher = Hash;
-    template <typename TYPE> using atomic_shared_ptr = ATOMIC_SHARED_PTR<TYPE>;
-    template <typename TYPE> using shared_ptr = SHARED_PTR<TYPE>;
+    template<typename TYPE> using atomic_shared_ptr = ATOMIC_SHARED_PTR<TYPE>;
+    template<typename TYPE> using shared_ptr = SHARED_PTR<TYPE>;
 
 private:
     struct node {
         node_type type_;
-        explicit node(node_type type): type_(type) {}
+
+        explicit node(node_type type) : type_(type) {}
     };
 
-    struct data_node: node {
+    struct data_node : node {
         const std::pair<const Key, const T> data_;
         const std::size_t hash_;
 
-        data_node(const Key &key, const T &mapped):
-            node(node_type::DATA_NODE), data_(key, mapped), hash_(Hash()(key)) { }
+        data_node(const Key &key, const T &mapped) :
+                node(node_type::DATA_NODE), data_(key, mapped), hash_(Hash()(key)) {}
 
-        data_node(const Key &key, const T &mapped, const std::size_t h):
-            node(node_type::DATA_NODE), data_(key, mapped), hash_(h) { }
+        data_node(const Key &key, const T &mapped, const std::size_t h) :
+                node(node_type::DATA_NODE), data_(key, mapped), hash_(h) {}
 
         std::size_t hash() const { return hash_; }
     };
 
-    struct array_node: node {
+    struct array_node : node {
         std::array<atomic_shared_ptr<node>, ARRAY_SIZE> arr_;
-        array_node(): node(node_type::ARRAY_NODE), arr_() {}
+
+        array_node() : node(node_type::ARRAY_NODE), arr_() {}
+
         constexpr static std::size_t size() { return ARRAY_SIZE; }
     };
 
     struct reserved_pool {
         boost::lockfree::stack<shared_ptr<data_node>> data_st_;
 
-        reserved_pool(): data_st_() {}
+        reserved_pool() : data_st_() {}
+
         void put() {
             data_st_.push(shared_ptr<data_node>());
         }
+
         void put(std::size_t sz) {
             for (std::size_t i = 0; i < sz; i++) put();
         }
+
         shared_ptr<data_node> get_data_node(const Key &key, const T &mapped, std::size_t hash) {
             shared_ptr<data_node> p(nullptr);
             data_st_.pop(p);
@@ -110,28 +117,27 @@ private:
         }
 
         const Key &key() {
-            return static_cast<data_node*>(loc_ref_.get())->data_.first;
+            return static_cast<data_node *>(loc_ref_.get())->data_.first;
         }
 
         const std::pair<const Key, const T> &value() {
 //            return loc_ref_->data_;
-            return static_cast<data_node*>(loc_ref_.get())->data_;
+            return static_cast<data_node *>(loc_ref_.get())->data_;
         }
 
         // for finding only
-        locator(concurrent_hash_table &ht, const Key &key) {
+        locator(ConcurrentHashTable &ht, const Key &key) {
             std::size_t hash = ht.hasher_(key);
             std::size_t level = 0;
             array_node *curr_arr_ptr = nullptr;
 
-            for(; level < ht.max_level_; level++) {
+            for (; level < ht.max_level_; level++) {
                 std::size_t curr_hash = 0;
                 if (level) {
                     curr_hash = level_hash(hash, level);
                     assert(curr_hash <= ARRAY_SIZE);
                     loc_ref_ = curr_arr_ptr->arr_[curr_hash].load(std::memory_order_relaxed);
-                }
-                else {
+                } else {
                     curr_hash = root_hash(hash);
                     assert(curr_hash <= ROOT_ARRAY_SIZE);
                     loc_ref_ = ht.root_arr_[curr_hash].load(std::memory_order_relaxed);
@@ -140,17 +146,17 @@ private:
                 if (!loc_ref_.get()) {
                     break;
                 } else if (loc_ref_.get()->type_ == node_type::DATA_NODE) {
-                    if (hash != static_cast<data_node*>(loc_ref_.get())->hash())
+                    if (hash != static_cast<data_node *>(loc_ref_.get())->hash())
                         loc_ref_ = nullptr;
                     break;
                 } else {
                     assert(loc_ref_->type_ == node_type::ARRAY_NODE);
-                    curr_arr_ptr = static_cast<array_node*>(loc_ref_.get());
+                    curr_arr_ptr = static_cast<array_node *>(loc_ref_.get());
                 }
             }
         }
 
-        locator(concurrent_hash_table &ht, const Key &key, const T *mappedp, modify_type) {
+        locator(ConcurrentHashTable &ht, const Key &key, const T *mappedp, modify_type) {
             bool remove_flag = false;
             if (!mappedp)
                 remove_flag = true;
@@ -177,7 +183,7 @@ private:
                 int fail = 0;
                 for (; fail < FAIL_LIMIT; fail++) {
                     if (!loc_ref_.get()) {
-                        // noting to update;
+                        // noting to Update;
                         loc_ref_ = nullptr;
                         return;
                     } else if (loc_ref_.get()->type_ == node_type::DATA_NODE) {
@@ -198,7 +204,7 @@ private:
                             continue;
                         }
                     } else {
-                        curr_arr_ptr = static_cast<array_node*>(loc_ref_.get());
+                        curr_arr_ptr = static_cast<array_node *>(loc_ref_.get());
                     }
                     if (fail == FAIL_LIMIT) loc_ref_ = nullptr;
                 }
@@ -206,7 +212,7 @@ private:
         }
 
         // for insertion only
-        locator(concurrent_hash_table &ht, const Key &key, const T &mapped, insert_type) {
+        locator(ConcurrentHashTable &ht, const Key &key, const T &mapped, insert_type) {
             std::size_t hash = ht.hasher_(key);
             std::size_t level = 0;
             bool end = false;
@@ -228,12 +234,12 @@ private:
                 }
                 int fail = 0;
 
-                for ( ; fail < FAIL_LIMIT; fail++) {
+                for (; fail < FAIL_LIMIT; fail++) {
                     if (!loc_ref_.get()) {
                         shared_ptr<node>
-                                tmp_ptr(static_cast<node*>(new data_node(key, mapped, hash)));
+                                tmp_ptr(static_cast<node *>(new data_node(key, mapped, hash)));
                         if (atomic_pos->compare_exchange_strong(loc_ref_,
-                                tmp_ptr)) {
+                                                                tmp_ptr)) {
                             // CAS succeeds means a successful insertion
                             loc_ref_ = std::move(tmp_ptr);
                             end = true;
@@ -246,18 +252,18 @@ private:
                         }
                     } else if (loc_ref_.get()->type_ == node_type::DATA_NODE) {
                         // first we should test if this is a duplicate key
-                        if (static_cast<data_node*>(loc_ref_.get())->hash() == hash) {
-                            // then insert fail, if user wants to update,
-                            // update member function should be used
+                        if (static_cast<data_node *>(loc_ref_.get())->hash() == hash) {
+                            // then Insert fail, if user wants to Update,
+                            // Update member function should be used
                             loc_ref_ = nullptr;
                             end = true;
                             break;
                         }
                         shared_ptr<array_node> tmp_arr_ptr(new array_node());
                         std::size_t next_level_hash = level_hash(
-                                static_cast<data_node*>(loc_ref_.get())->hash(),
+                                static_cast<data_node *>(loc_ref_.get())->hash(),
                                 level + 1
-                                );
+                        );
                         tmp_arr_ptr.get()->arr_[next_level_hash].store(loc_ref_);
                         if (atomic_pos->compare_exchange_strong(loc_ref_, tmp_arr_ptr)) {
                             // CAS succeeds means to change this atomic to array_node
@@ -272,7 +278,7 @@ private:
                         }
                     } else {
 //                        assert(loc_ref_->type_ == node_type::ARRAY_NODE);
-                        curr_arr_ptr = static_cast<array_node*>(loc_ref_.get());
+                        curr_arr_ptr = static_cast<array_node *>(loc_ref_.get());
                     }
                 }
                 if (fail == FAIL_LIMIT) loc_ref_ = nullptr;
@@ -281,36 +287,36 @@ private:
     };
 
 public:
-    concurrent_hash_table(): size_(0) {
+    ConcurrentHashTable() : size_(0) {
         std::size_t m = 1, num = ARRAY_SIZE, level = 1;
         std::size_t total_bit = sizeof(Key) * 8;
         if (total_bit < 64) {
             for (std::size_t i = 0; i < total_bit; i++)
                 m *= 2;
-            for ( ; num < m; num += num * ARRAY_SIZE)
+            for (; num < m; num += num * ARRAY_SIZE)
                 level++;
-        }
-        else {
+        } else {
             m = std::numeric_limits<std::size_t>::max();
             auto m2 = m / 2;
-            for ( ; num < m2; num += num * ARRAY_SIZE)
+            for (; num < m2; num += num * ARRAY_SIZE)
                 level++;
             level++;
         }
         max_level_ = level;
         max_ = m;
     }
-    concurrent_hash_table(std::size_t reserved): concurrent_hash_table() {
+
+    ConcurrentHashTable(std::size_t reserved) : ConcurrentHashTable() {
 //        pool_.put(reserved);
     }
 
-    ~concurrent_hash_table() noexcept = default;
+    ~ConcurrentHashTable() noexcept = default;
 
-    bool is_lock_free() const noexcept {
+    bool IsLockFree() const noexcept {
         return atomic_shared_ptr<node>().is_lock_free();
     }
 
-    bool insert(const Key &key, const T &mapped) {
+    bool Insert(const Key &key, const T &mapped) {
         locator locator_(*this, key, mapped, insert_type());
         if (locator_.loc_ref_ == nullptr)
             return false;
@@ -318,26 +324,26 @@ public:
         return true;
     }
 
-    std::pair<const Key, const T> get(const Key &key) {
+    std::pair<const Key, const T> Get(const Key &key) {
         locator locator_(*this, key);
         if (locator_.loc_ref_ == nullptr)
             throw std::out_of_range("No Element Found");
         return locator_.value();
     }
 
-    const std::pair<const Key, const T>* unsafe_get(const Key &key) {
+    const std::pair<const Key, const T> *UnsafeGet(const Key &key) {
         locator locator_(*this, key);
-        return &static_cast<data_node*>(locator_.loc_ref_.get())->data_;
+        return &static_cast<data_node *>(locator_.loc_ref_.get())->data_;
     }
 
-    bool update(const Key &key, const T &new_mapped) {
+    bool Update(const Key &key, const T &new_mapped) {
         locator locator_(*this, key, &new_mapped, modify_type());
         if (locator_.loc_ref_ == nullptr)
             return false;
         return true;
     }
 
-    bool remove(const Key &key) {
+    bool Remove(const Key &key) {
         // TODO
         locator locator_(*this, key, nullptr, modify_type());
         if (locator_.loc_ref_ == nullptr)
@@ -345,7 +351,7 @@ public:
         return true;
     }
 
-    std::size_t size() const {
+    std::size_t Size() const {
         return size_.load();
     }
 

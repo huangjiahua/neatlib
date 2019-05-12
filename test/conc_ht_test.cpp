@@ -23,25 +23,25 @@ size_t threadNum = 12;
 template <typename HT>
 void insert_task(HT &ht, vector<size_t> &keys, size_t threadIdx) {
     for ( ; threadIdx < keys.size(); threadIdx += threadNum)
-        ht.insert(keys[threadIdx], 10);
+        ht.Insert(keys[threadIdx], 10);
 }
 
 template <typename HT>
 void get_task(HT &ht, vector<size_t> &keys, size_t threadIdx) {
     for ( ; threadIdx < keys.size(); threadIdx += threadNum)
-        ht.get(keys[threadIdx]);
+        ht.Get(keys[threadIdx]);
 }
 
 template <typename HT>
 void update_task(HT &ht, vector<size_t> &keys, size_t threadIdx) {
     for ( ; threadIdx < keys.size(); threadIdx += threadNum)
-        ht.update(keys[threadIdx], 55);
+        ht.Update(keys[threadIdx], 55);
 }
 
 template <typename HT>
 void remove_task(HT &ht, vector<size_t> &keys, size_t threadIdx) {
     for (; threadIdx < keys.size(); threadIdx += threadNum) {
-        ht.remove(keys[threadIdx]);
+        ht.Remove(keys[threadIdx]);
     }
 }
 
@@ -51,7 +51,7 @@ int main(int argc, const char *argv[]) {
     if (argc >= 4) RANGE = stoi(string(argv[3]));
     vector<size_t> keys(TOTAL_ELEMENTS, 0);
     vector<thread> threads(threadNum);
-    neatlib::concurrent_hash_table<size_t,
+    neatlib::ConcurrentHashTable<size_t,
                                    size_t,
                                    std::hash<size_t>,
                                    4,
@@ -91,7 +91,7 @@ int main(int argc, const char *argv[]) {
     }
     auto t5 = steady_clock::now();
 
-    ht.insert(16, 10);
+    ht.Insert(16, 10);
     cout << "ThreadNum:       " << threadNum << endl;
     cout << "INSERTION TIME:  " << duration_cast<milliseconds>(t2 - t1).count() << endl;
     cout << "GETTING TIME:    " << duration_cast<milliseconds>(t3 - t2).count() << endl;

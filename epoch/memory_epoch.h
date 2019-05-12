@@ -4,31 +4,35 @@
 
 #ifndef NEATLIB_EPOCH_H
 #define NEATLIB_EPOCH_H
+
 #include <memory>
 #include "faster/light_epoch.h"
 
 namespace neatlib {
 namespace epoch {
 
-template <typename T>
+template<typename T>
 class Delete_Context : public FASTER::core::IAsyncContext {
 public:
-    Delete_Context(T* ptr_): ptr(ptr_) { }
-    Delete_Context(const Delete_Context& other): ptr(other.ptr) { }
+    Delete_Context(T *ptr_) : ptr(ptr_) {}
+
+    Delete_Context(const Delete_Context &other) : ptr(other.ptr) {}
+
 protected:
-    FASTER::core::Status DeepCopy_Internal(FASTER::core::IAsyncContext*& context_copy) final {
+    FASTER::core::Status DeepCopy_Internal(FASTER::core::IAsyncContext *&context_copy) final {
         return FASTER::core::IAsyncContext::DeepCopy_Internal(*this, context_copy);
     }
+
 public:
-    T* ptr;
+    T *ptr;
 };
 
-template <typename T, class Deleter = std::default_delete<T> >
+template<typename T, class Deleter = std::default_delete<T> >
 class MemoryEpoch {
 private:
     FASTER::core::LightEpoch inner_epoch_;
 
-    static auto delete_callback = [](FASTER::core::IAsyncContext* ctxt) {
+    static auto delete_callback = [](FASTER::core::IAsyncContext *ctxt) {
         FASTER::core::CallbackContext<Delete_Context<T>> context(ctxt);
         Deleter()(context->ptr);
     };
@@ -48,9 +52,9 @@ public:
         inner_epoch_.Unprotect();
     }
 
-    uint64_t BumpEpoch(T* ptr) {
+    uint64_t BumpEpoch(T *ptr) {
         Delete_Context<T> context(ptr);
-        FASTER::core::IAsyncContext* context_copy;
+        FASTER::core::IAsyncContext *context_copy;
         context.DeepCopy(context_copy);
         return inner_epoch_.BumpCurrentEpoch(delete_callback, context_copy);
     }

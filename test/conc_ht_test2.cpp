@@ -51,7 +51,7 @@ template <typename T> using lockfree_shared_ptr = folly::detail::shared_ptr_inte
 int main() {
     vector<size_t> keys(TOTAL_ELEMENTS, 0);
     vector<thread> threads(threadNum);
-    neatlib::concurrent_hash_table<size_t,
+    neatlib::ConcurrentHashTable<size_t,
                                    size_t,
                                    std::hash<size_t>,
                                    4,
@@ -93,8 +93,8 @@ int main() {
     }
     auto t5 = steady_clock::now();
 
-    ht.insert(16, 10);
-    cout << "TOTAL SIZE:      " << ht.size() << endl;
+    ht.Insert(16, 10);
+    cout << "TOTAL SIZE:      " << ht.Size() << endl;
     cout << "INSERTION TIME:  " << duration_cast<milliseconds>(t2 - t1).count() << endl;
     cout << "GETTING TIME:    " << duration_cast<milliseconds>(t3 - t2).count() << endl;
     cout << "UPDATING TIME:   " << duration_cast<milliseconds>(t4 - t3).count() << endl;

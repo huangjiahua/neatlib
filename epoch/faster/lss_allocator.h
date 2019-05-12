@@ -42,14 +42,14 @@ static constexpr uint32_t kBaseAlignment = 16;
 struct alignas(8) Header {
   Header(uint32_t size_, uint32_t offset_)
     : offset{ offset_ }
-    , size{ size_ } {
+    , Size{ size_ } {
   }
 
   /// Offset from the head of the segment allocator's buffer to the memory block.
   uint32_t offset;
 
   /// Size of the memory block.
-  uint32_t size;
+  uint32_t Size;
 };
 static_assert(sizeof(Header) == 8, "Header is not 8 bytes!");
 #else
@@ -96,7 +96,7 @@ class SegmentState {
     };
 };
 static_assert(sizeof(SegmentState) == 8, "sizeof(SegmentState) != 8");
-static_assert(kSegmentSize < UINT16_MAX / 2, "kSegmentSize too large for offset size!");
+static_assert(kSegmentSize < UINT16_MAX / 2, "kSegmentSize too large for offset Size!");
 
 /// Allocation takes place inside segments. When a segment is no longer needed, we add it to the
 /// garbage list.

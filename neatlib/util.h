@@ -40,22 +40,20 @@ namespace neatlib {
 
 constexpr std::size_t DEFAULT_NEATLIB_HASH_LEVEL = 4;
 
-template <std::size_t B>
-struct get_power2
-{
+template<std::size_t B>
+struct get_power2 {
     static constexpr int value = 2 * get_power2<B - 1>::value;
 };
 
 template<>
-struct get_power2<0>
-{
+struct get_power2<0> {
     static constexpr int value = 1;
 };
 
 namespace util {
 
-template <typename Key>
-inline std::size_t level_hash(const std::size_t hash, const std::size_t level, 
+template<typename Key>
+inline std::size_t level_hash(const std::size_t hash, const std::size_t level,
                               const std::size_t arr_size, const std::size_t total_level) {
     std::size_t mask = (arr_size - 1);
     std::size_t ret = (hash >> (total_level * level)) & mask;

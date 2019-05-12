@@ -11,4 +11,3 @@ include_directories(./)
 add_subdirectory(./neatlib)
 add_subdirectory(./test)
 
-add_executable(neatlib1 main.cpp neatlib/concurrent_hash_table.h)

@@ -22,7 +22,11 @@ if (UNIX AND NOT APPLE)
     endif()
 endif()
 
+set(EBR ../epoch/faster/lss_allocator.cc ../epoch/faster/thread.cc)
+
 add_executable(ebr_test EBR_test.cpp ../epoch/faster/lss_allocator.cc ../epoch/faster/thread.cc)
+
+add_executable(ebr_ht_test ebr_ht_test.cpp ${EBR})
 
 #add_executable(lockfree_test2 conc_ht_test3.cpp jss_atomic_shared_ptr.h)
 #if (UNIX)

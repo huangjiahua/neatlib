@@ -32,16 +32,13 @@ class MemoryEpoch {
 private:
     FASTER::core::LightEpoch inner_epoch_;
 
-    struct DeleteCallback {
-        void operator()(FASTER::core::IAsyncContext *ctxt) {
-            FASTER::core::CallbackContext<Delete_Context<T>> context(ctxt);
-            Deleter()(context->ptr);
-        }
-    };
-
+    static void delete_callback(FASTER::core::IAsyncContext *ctxt) {
+        FASTER::core::CallbackContext<Delete_Context<T>> context(ctxt);
+        Deleter()(context->ptr);
+    }
 
 public:
-    MemoryEpoch(size_t max_thread_cnt) : inner_epoch_(max_thread_cnt) {}
+    explicit MemoryEpoch(size_t max_thread_cnt) : inner_epoch_(max_thread_cnt) {}
 
     inline uint64_t UpdateEpoch() {
         return inner_epoch_.ProtectAndDrain();
@@ -59,7 +56,7 @@ public:
         Delete_Context<T> context(ptr);
         FASTER::core::IAsyncContext *context_copy;
         context.DeepCopy(context_copy);
-        return inner_epoch_.BumpCurrentEpoch(DeleteCallback(), context_copy);
+        return inner_epoch_.BumpCurrentEpoch(delete_callback, context_copy);
     }
 };
 

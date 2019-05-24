@@ -40,8 +40,8 @@ private:
 public:
     explicit MemoryEpoch(size_t max_thread_cnt) : inner_epoch_(max_thread_cnt) {}
 
-    inline uint64_t UpdateEpoch() {
-        return inner_epoch_.ProtectAndDrain();
+    inline uint64_t EnterEpoch() {
+        return inner_epoch_.ReentrantProtect();
     }
 
     inline bool IsInEpoch() {
@@ -49,7 +49,7 @@ public:
     }
 
     inline void LeaveEpoch() {
-        inner_epoch_.Unprotect();
+        inner_epoch_.ReentrantUnprotect();
     }
 
     uint64_t BumpEpoch(T *ptr) {

@@ -23,6 +23,11 @@ private:
     static constexpr size_t kRootArraySize =
             static_cast<const std::size_t>(get_power2<ROOT_HASH_LEVEL>::value);
     static constexpr size_t kFailLimit = 20;
+
+    using insert_type = std::integral_constant<int, 0>;
+    using get_type = std::integral_constant<int, 1>;
+    using update_type = std::integral_constant<int, 2>;
+    using remove_type = std::integral_constant<int, 3>;
 private:
     enum class NodeType {
         Data, Array, Plain
@@ -85,6 +90,7 @@ private:
         }
 
         void InsertOrUpdate(LockFreeHashTable &ht, const Key &key, const T *mapped_ptr, size_t hash, bool insert) {
+            pos = nullptr;
             size_t level = 0;
             bool end = false;
             ArrayNode *curr_arr_ptr = nullptr;
@@ -127,6 +133,7 @@ private:
                             if (atomic_pos->compare_exchange_strong(pos, tmp_ptr.get())) {
                                 pos = old;
                                 tmp_ptr.release();
+                                assert(pos->type == NodeType::Data);
                                 return;
                             } else {
                                 continue;
@@ -151,20 +158,22 @@ private:
                             }
                         }
                     } else {
-                        assert(pos != nullptr && pos->type == NodeType::Array);
+                        assert(pos != nullptr || pos->type == NodeType::Array);
                         curr_arr_ptr = static_cast<ArrayNode *>(pos);
                     }
-                    if (fail == kFailLimit) pos = nullptr;
+                    if (fail == kFailLimit)
+                        pos = nullptr;
                 }
             }
+            assert(insert);
         }
 
-        Locator(LockFreeHashTable &ht, const Key &key, const T &mapped, size_t hash) {
+        Locator(LockFreeHashTable &ht, const Key &key, const T &mapped, size_t hash, insert_type) {
             // insert data and set pos to the newly inserted pointer on the data structure
             InsertOrUpdate(ht, key, &mapped, hash, true);
         }
 
-        Locator(LockFreeHashTable &ht, const Key &key, size_t hash) {
+        Locator(LockFreeHashTable &ht, const Key &key, size_t hash, get_type) {
             // find the data and set pos to the pointer of the data
             size_t level = 0;
             ArrayNode *curr_arr_ptr = nullptr;
@@ -194,12 +203,12 @@ private:
             }
         }
 
-        Locator(LockFreeHashTable &ht, const Key &key, const T &mapped, size_t hash, std::true_type) {
+        Locator(LockFreeHashTable &ht, const Key &key, const T &mapped, size_t hash, update_type) {
             // update the data and set pos to the old pointer which is removed from the data structure
             InsertOrUpdate(ht, key, &mapped, hash, false);
         }
 
-        explicit Locator(LockFreeHashTable &ht, Key &key, size_t hash, std::true_type, std::true_type) {
+        Locator(LockFreeHashTable &ht, const Key &key, size_t hash, remove_type) {
             // remove the data pointer on the data structure and set pos to the pointer
             InsertOrUpdate(ht, key, nullptr, hash, false);
         }
@@ -219,66 +228,69 @@ private:
 
 public:
     LockFreeHashTable(size_t expectedThreadCount = 4) :
-            epoch_(expectedThreadCount + 1) {
+            epoch_(expectedThreadCount) {
         for (std::atomic<Node *> &ptr : root_)
             ptr.store(nullptr);
         size_t m = 1, num = kArraySize, level = 1;
         size_t total_bit = sizeof(Key) * 8;
-        if (total_bit < 64) {
+        if (total_bit <= 64) {
             for (size_t i = 0; i < total_bit; i++)
                 m *= 2;
             for (; num < m; num += num * kArraySize)
                 level++;
             level++;
         }
-        maxLevel_ = level;
+        maxLevel_ = 20;
         maxElement_ = m;
     }
 
     ~LockFreeHashTable() {
-        epoch_.UpdateEpoch();
+        epoch_.EnterEpoch();
         for (std::atomic<Node *> &ptr : root_)
             RecursiveDestroyNode(ptr.load(std::memory_order_relaxed));
     }
 
     inline bool Insert(const Key &key, const T &mapped) {
-        Locator locator(*this, key, mapped, Hash()(key));
-        assert(key == locator.GetKey() && mapped == locator.GetMapped());
-        epoch_.UpdateEpoch();
+        Locator locator(*this, key, mapped, Hash()(key), insert_type());
+        DataNode *tmp = static_cast<DataNode*>(locator.pos);
+//        assert(locator.pos == nullptr || key == locator.GetKey() && mapped == locator.GetMapped());
         return locator.pos != nullptr;
     }
 
     inline std::pair<const Key, T> Get(const Key &key) {
-        Locator locator(*this, key, Hash()(key));
+        epoch_.EnterEpoch();
+        Locator locator(*this, key, Hash()(key), get_type());
         if (locator.pos == nullptr) {
-            epoch_.UpdateEpoch();
+            epoch_.EnterEpoch();
             throw std::out_of_range("No element found");
         }
         DataNode *dataNode = static_cast<DataNode *>(locator.pos);
         std::pair<const Key, T> ret{dataNode->data.key, dataNode->data.mapped};
-        epoch_.UpdateEpoch();
+        epoch_.LeaveEpoch();
         return ret;
     }
 
     inline bool Update(const Key &key, const T &newMapped) {
-        Locator locator(*this, key, newMapped, Hash()(key), std::true_type());
+        static thread_local int i = 0;
+        i++;
+        Locator locator(*this, key, newMapped, Hash()(key), update_type());
+        assert(locator.pos == nullptr || locator.pos->type == NodeType::Data);
         if (locator.pos == nullptr) {
-            epoch_.UpdateEpoch();
+            epoch_.EnterEpoch();
             return false;
         }
         epoch_.BumpEpoch(static_cast<Node*>(locator.pos));
-        epoch_.UpdateEpoch();
         return true;
     }
 
     inline bool Remove(const Key &key) {
-        Locator locator(*this, key, Hash()(key), std::true_type(), std::true_type());
+        Locator locator(*this, key, Hash()(key), remove_type());
         if (locator.pos == nullptr) {
-            epoch_.UpdateEpoch();
+            epoch_.EnterEpoch();
             return false;
         }
+        assert(locator.GetKey() == key);
         epoch_.BumpEpoch(locator.pos);
-        epoch_.UpdateEpoch();
         return true;
     }
 

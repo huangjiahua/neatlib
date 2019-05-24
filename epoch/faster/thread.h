@@ -54,7 +54,8 @@ class Thread {
     int32_t result = ++current_num_threads_;
     assert(result < kMaxNumThreads);
 #endif
-    uint32_t start = next_index_++;
+//    uint32_t start = next_index_++;
+    uint32_t start = 0;
     uint32_t end = start + 2 * kMaxNumThreads;
     for(uint32_t id = start; id < end; ++id) {
       bool expected = false;

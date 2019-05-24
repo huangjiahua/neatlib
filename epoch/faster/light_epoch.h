@@ -245,6 +245,8 @@ class LightEpoch {
   uint64_t BumpCurrentEpoch(EpochAction::callback_t callback, IAsyncContext* context) {
     uint64_t prior_epoch = BumpCurrentEpoch() - 1;
     uint32_t i = 0, j = 0;
+    uint32_t entry = Thread::id();
+    uint64_t curr_epoch = table_[entry].local_current_epoch;
     while(true) {
       uint64_t trigger_epoch = drain_list_[i].epoch.load();
       if(trigger_epoch == EpochAction::kFree) {

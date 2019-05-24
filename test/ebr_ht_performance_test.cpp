@@ -8,10 +8,8 @@
 #include <vector>
 #include <chrono>
 #include <random>
-#include "../neatlib/concurrent_hash_table.h"
+#include "../neatlib/lock_free_hash_table.h"
 #include <functional>
-#include "jss_atomic_shared_ptr.h"
-
 
 using namespace std;
 using namespace chrono;
@@ -23,41 +21,37 @@ constexpr size_t threadNum = 12;
 template<typename HT>
 void insert_task(HT &ht, vector<size_t> &keys, size_t threadIdx) {
     for (; threadIdx < keys.size(); threadIdx += threadNum)
-        ht.insert(keys[threadIdx], 10);
+        ht.Insert(keys[threadIdx], 10);
 }
 
 template<typename HT>
 void get_task(HT &ht, vector<size_t> &keys, size_t threadIdx) {
     for (; threadIdx < keys.size(); threadIdx += threadNum)
-        ht.get(keys[threadIdx]);
+        ht.Get(keys[threadIdx]);
 }
 
 template<typename HT>
 void update_task(HT &ht, vector<size_t> &keys, size_t threadIdx) {
     for (; threadIdx < keys.size(); threadIdx += threadNum)
-        ht.update(keys[threadIdx], 55);
+        ht.Update(keys[threadIdx], 55);
 }
 
 template<typename HT>
 void remove_task(HT &ht, vector<size_t> &keys, size_t threadIdx) {
     for (; threadIdx < keys.size(); threadIdx += threadNum) {
-        ht.remove(keys[threadIdx]);
+        ht.Remove(keys[threadIdx]);
     }
 }
-
-template<typename T> using lockfree_atomic_shared_ptr = jss::atomic_shared_ptr<T>;
-template<typename T> using lockfree_shared_ptr = jss::shared_ptr<T>;
 
 int main() {
     vector<size_t> keys(TOTAL_ELEMENTS, 0);
     vector<thread> threads(threadNum);
-    neatlib::concurrent_hash_table<size_t,
+    neatlib::LockFreeHashTable<size_t,
             size_t,
             std::hash<size_t>,
             4,
-            8,
-            lockfree_atomic_shared_ptr,
-            lockfree_shared_ptr> ht{};
+            8
+            > ht{};
     default_random_engine en(static_cast<unsigned int>(steady_clock::now().time_since_epoch().count()));
     uniform_int_distribution<size_t> dis(0, RANGE);
     std::size_t right = 0, right2 = 0, right3 = 0;
@@ -93,8 +87,8 @@ int main() {
     }
     auto t5 = steady_clock::now();
 
-    ht.insert(16, 10);
-    cout << "TOTAL SIZE:      " << ht.size() << endl;
+    ht.Insert(16, 10);
+    cout << "TOTAL SIZE:      " << 0 << endl;
     cout << "INSERTION TIME:  " << duration_cast<milliseconds>(t2 - t1).count() << endl;
     cout << "GETTING TIME:    " << duration_cast<milliseconds>(t3 - t2).count() << endl;
     cout << "UPDATING TIME:   " << duration_cast<milliseconds>(t4 - t3).count() << endl;

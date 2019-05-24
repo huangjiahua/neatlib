@@ -71,7 +71,7 @@ void epoch_thread_task(size_t idx) {
         } else {
             read(loc);
         }
-        epoch->UpdateEpoch();
+        epoch->EnterEpoch();
     }
 }
 

@@ -7,6 +7,9 @@
 
 #include <epoch/memory_epoch.h>
 #include <array>
+#include <queue>
+#include <vector>
+#include <list>
 #include <cassert>
 #include <memory>
 #include "util.h"
@@ -28,6 +31,7 @@ private:
     using get_type = std::integral_constant<int, 1>;
     using update_type = std::integral_constant<int, 2>;
     using remove_type = std::integral_constant<int, 3>;
+
 private:
     enum class NodeType {
         Data, Array, Plain
@@ -39,18 +43,25 @@ private:
         size_t hash;
 
         DataBlock(const Key &k, const T &m) : key(k), mapped(m), hash(Hash()(k)) {}
+        inline void init(const Key &k, const T &m) {
+            key = k;
+            mapped = m;
+            hash = Hash()(k);
+        }
     };
 
     struct Node {
         NodeType type;
 
         explicit Node(NodeType nodeType) : type(nodeType) {}
+        virtual ~Node() = default;
     };
 
     struct DataNode : Node {
         DataBlock data;
 
         DataNode(const Key &k, const T &m) : Node(NodeType::Data), data(k, m) {}
+        ~DataNode() override = default;
     };
 
     struct ArrayNode : Node {
@@ -60,6 +71,7 @@ private:
             for (std::atomic<Node *> &ptr : arr)
                 ptr.store(nullptr);
         }
+        ~ArrayNode() override = default;
     };
 
     static void RecursiveDestroyNode(Node *nodePtr) {
@@ -77,6 +89,33 @@ private:
     struct Locator {
         Node *pos = nullptr;
 
+
+        inline static DataNode *NewDataNode(LockFreeHashTable &ht, const Key &key, const T &mapped) {
+            uint32_t tid = FASTER::core::Thread::id();
+            assert(tid <= ht.data_pool_.size());
+            DataNodeQueue &queue = ht.data_pool_[tid];
+            if (!queue.empty()) {
+                DataNode *ptr = queue.front();
+                queue.pop();
+                ptr->type = NodeType::Data;
+                ptr->data.init(key, mapped);
+                return ptr;
+            }
+            return new DataNode(key, mapped);
+        }
+
+
+        struct DataNodeDeleter {
+            LockFreeHashTable *ht = nullptr;
+            inline void operator()(Node *node) const {
+                uint32_t tid = FASTER::core::Thread::id();
+                assert(tid <= ht->data_pool_.size());
+                ht->data_pool_[tid].push(static_cast<DataNode*>(node));
+            }
+            explicit DataNodeDeleter(LockFreeHashTable *h): ht(h) { }
+        };
+
+
         static inline size_t root_hash(std::size_t hash) {
             // get the hash fragment to address the root_
             return hash & (kRootArraySize - 1);
@@ -88,6 +127,9 @@ private:
             level--;
             return util::level_hash<Key>(hash, level, kArraySize, HASH_LEVEL);
         }
+
+        using DataNodePtr = std::unique_ptr<Node, DataNodeDeleter>;
+        using ArrayNodePtr = std::unique_ptr<ArrayNode>;
 
         void InsertOrUpdate(LockFreeHashTable &ht, const Key &key, const T *mapped_ptr, size_t hash, bool insert) {
             pos = nullptr;
@@ -103,21 +145,19 @@ private:
                     assert(curr_hash < kArraySize);
                     assert(curr_arr_ptr != nullptr);
                     atomic_pos = &curr_arr_ptr->arr[curr_hash];
-                    pos = atomic_pos->load();
                 } else {
                     curr_hash = root_hash(hash);
                     assert(curr_hash < kRootArraySize);
                     atomic_pos = &ht.root_[curr_hash];
-                    pos = atomic_pos->load();
                 }
-
+                pos = atomic_pos->load();
                 size_t fail = 0;
                 for (; fail < kFailLimit; fail++) {
                     if (pos == nullptr) {
                         if (!insert) {
                             return;
                         }
-                        std::unique_ptr<Node> tmp_ptr(new DataNode(key, *mapped_ptr));
+                        DataNodePtr tmp_ptr(NewDataNode(ht, key, *mapped_ptr), DataNodeDeleter(&ht));
                         if (atomic_pos->compare_exchange_strong(pos, tmp_ptr.get())) {
                             pos = tmp_ptr.release();
                             end = true;
@@ -128,8 +168,8 @@ private:
                     } else if (pos->type == NodeType::Data) {
                         if (!insert) { // for update and remove
                             Node *old = pos;
-                            std::unique_ptr<Node> tmp_ptr(nullptr);
-                            if (mapped_ptr != nullptr) tmp_ptr.reset(new DataNode(key, *mapped_ptr));
+                            DataNodePtr tmp_ptr(nullptr, DataNodeDeleter(&ht));
+                            if (mapped_ptr != nullptr) tmp_ptr.reset(NewDataNode(ht, key, *mapped_ptr));
                             if (atomic_pos->compare_exchange_strong(pos, tmp_ptr.get())) {
                                 pos = old;
                                 tmp_ptr.release();
@@ -144,7 +184,7 @@ private:
                                 end = true;
                                 break;
                             }
-                            std::unique_ptr<ArrayNode> tmp_arr_ptr(new ArrayNode);
+                            ArrayNodePtr tmp_arr_ptr(new ArrayNode);
                             size_t next_level_hash = level_hash(
                                     static_cast<DataNode *>(pos)->data.hash,
                                     level + 1
@@ -160,9 +200,13 @@ private:
                     } else {
                         assert(pos != nullptr || pos->type == NodeType::Array);
                         curr_arr_ptr = static_cast<ArrayNode *>(pos);
+                        break;
                     }
-                    if (fail == kFailLimit)
-                        pos = nullptr;
+
+                }
+                if (fail == kFailLimit) {
+                    pos = nullptr;
+                    return;
                 }
             }
             assert(insert);
@@ -226,9 +270,11 @@ private:
 
 private:
 
+
 public:
-    LockFreeHashTable(size_t expectedThreadCount = 4) :
-            epoch_(expectedThreadCount) {
+    explicit LockFreeHashTable(size_t expectedThreadCount, size_t expectedDataNum = 1000000) :
+            epoch_(expectedThreadCount),
+            data_pool_(expectedThreadCount + 2) {
         for (std::atomic<Node *> &ptr : root_)
             ptr.store(nullptr);
         size_t m = 1, num = kArraySize, level = 1;
@@ -242,6 +288,13 @@ public:
         }
         maxLevel_ = 20;
         maxElement_ = m;
+
+        size_t each = expectedDataNum / expectedThreadCount;
+        for (uint32_t i = 0; i < expectedThreadCount; i++) {
+            for (size_t j = 0; j < each; j++) {
+                data_pool_[i].push((DataNode*)malloc(sizeof(DataNode)));
+            }
+        }
     }
 
     ~LockFreeHashTable() {
@@ -271,15 +324,13 @@ public:
     }
 
     inline bool Update(const Key &key, const T &newMapped) {
-        static thread_local int i = 0;
-        i++;
         Locator locator(*this, key, newMapped, Hash()(key), update_type());
         assert(locator.pos == nullptr || locator.pos->type == NodeType::Data);
         if (locator.pos == nullptr) {
             epoch_.EnterEpoch();
             return false;
         }
-        epoch_.BumpEpoch(static_cast<Node*>(locator.pos));
+        epoch_.BumpEpoch(static_cast<Node*>(locator.pos), data_pool_);
         return true;
     }
 
@@ -290,12 +341,14 @@ public:
             return false;
         }
         assert(locator.GetKey() == key);
-        epoch_.BumpEpoch(locator.pos);
+        epoch_.BumpEpoch(locator.pos, data_pool_);
         return true;
     }
 
 private:
-    epoch::MemoryEpoch<Node> epoch_;
+    using DataNodeQueue = std::queue<DataNode*, std::list<DataNode*>>;
+    std::vector<DataNodeQueue> data_pool_;
+    epoch::MemoryEpoch<Node, std::vector<DataNodeQueue>, DataNode> epoch_;
     std::array<std::atomic<Node *>, kRootArraySize> root_;
     size_t maxLevel_;
     size_t maxElement_;

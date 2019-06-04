@@ -23,7 +23,7 @@ constexpr size_t threadNum = 12;
 template <typename HT>
 void insert_task(HT &ht, vector<size_t> &keys, size_t threadIdx) {
     for ( ; threadIdx < keys.size(); threadIdx += threadNum)
-        ht.insert(keys[threadIdx], 10);
+        ht.Insert(keys[threadIdx], 10);
 }
 
 template <typename HT>

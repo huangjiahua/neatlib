@@ -9,10 +9,10 @@
 #include <array>
 #include <queue>
 #include <vector>
-#include <list>
 #include <cassert>
 #include <memory>
 #include "util.h"
+#include "../util/NodeQueue.h"
 
 namespace neatlib {
 
@@ -43,6 +43,7 @@ private:
         size_t hash;
 
         DataBlock(const Key &k, const T &m) : key(k), mapped(m), hash(Hash()(k)) {}
+
         inline void init(const Key &k, const T &m) {
             key = k;
             mapped = m;
@@ -54,12 +55,14 @@ private:
         NodeType type;
 
         explicit Node(NodeType nodeType) : type(nodeType) {}
+
         virtual ~Node() = default;
     };
 
     struct DataNode : Node {
         DataBlock data;
-
+        DataNode *next = nullptr;
+        DataNode *last = nullptr;
         DataNode(const Key &k, const T &m) : Node(NodeType::Data), data(k, m) {}
         ~DataNode() override = default;
     };
@@ -71,6 +74,7 @@ private:
             for (std::atomic<Node *> &ptr : arr)
                 ptr.store(nullptr);
         }
+
         ~ArrayNode() override = default;
     };
 
@@ -94,9 +98,8 @@ private:
             uint32_t tid = FASTER::core::Thread::id();
             assert(tid <= ht.data_pool_.size());
             DataNodeQueue &queue = ht.data_pool_[tid];
-            if (!queue.empty()) {
-                DataNode *ptr = queue.front();
-                queue.pop();
+            if (!queue.Empty()) {
+                DataNode *ptr = queue.Pop();
                 ptr->type = NodeType::Data;
                 ptr->data.init(key, mapped);
                 return ptr;
@@ -107,12 +110,14 @@ private:
 
         struct DataNodeDeleter {
             LockFreeHashTable *ht = nullptr;
+
             inline void operator()(Node *node) const {
                 uint32_t tid = FASTER::core::Thread::id();
                 assert(tid <= ht->data_pool_.size());
-                ht->data_pool_[tid].push(static_cast<DataNode*>(node));
+                ht->data_pool_[tid].Push(static_cast<DataNode *>(node));
             }
-            explicit DataNodeDeleter(LockFreeHashTable *h): ht(h) { }
+
+            explicit DataNodeDeleter(LockFreeHashTable *h) : ht(h) {}
         };
 
 
@@ -131,7 +136,8 @@ private:
         using DataNodePtr = std::unique_ptr<Node, DataNodeDeleter>;
         using ArrayNodePtr = std::unique_ptr<ArrayNode>;
 
-        void InsertOrUpdate(LockFreeHashTable &ht, const Key &key, const T *mapped_ptr, size_t hash, bool insert) {
+        void InsertOrUpdate(LockFreeHashTable &ht, const Key &key,
+                            const T *mapped_ptr, size_t hash, bool insert) {
             pos = nullptr;
             size_t level = 0;
             bool end = false;
@@ -292,7 +298,7 @@ public:
         size_t each = expectedDataNum / expectedThreadCount;
         for (uint32_t i = 0; i < expectedThreadCount; i++) {
             for (size_t j = 0; j < each; j++) {
-                data_pool_[i].push((DataNode*)malloc(sizeof(DataNode)));
+                data_pool_[i].Push((DataNode *) malloc(sizeof(DataNode)));
             }
         }
     }
@@ -305,7 +311,7 @@ public:
 
     inline bool Insert(const Key &key, const T &mapped) {
         Locator locator(*this, key, mapped, Hash()(key), insert_type());
-        DataNode *tmp = static_cast<DataNode*>(locator.pos);
+        DataNode *tmp = static_cast<DataNode *>(locator.pos);
 //        assert(locator.pos == nullptr || key == locator.GetKey() && mapped == locator.GetMapped());
         return locator.pos != nullptr;
     }
@@ -330,7 +336,7 @@ public:
             epoch_.EnterEpoch();
             return false;
         }
-        epoch_.BumpEpoch(static_cast<Node*>(locator.pos), data_pool_);
+        epoch_.BumpEpoch(static_cast<Node *>(locator.pos), data_pool_);
         return true;
     }
 
@@ -346,7 +352,7 @@ public:
     }
 
 private:
-    using DataNodeQueue = std::queue<DataNode*, std::list<DataNode*>>;
+    using DataNodeQueue = NodeQueue<DataNode>;
     std::vector<DataNodeQueue> data_pool_;
     epoch::MemoryEpoch<Node, std::vector<DataNodeQueue>, DataNode> epoch_;
     std::array<std::atomic<Node *>, kRootArraySize> root_;

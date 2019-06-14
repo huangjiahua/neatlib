@@ -205,9 +205,10 @@ private:
                         }
                     } else {
                         curr_arr_ptr = static_cast<array_node *>(loc_ref_.get());
+                        break;
                     }
-                    if (fail == FAIL_LIMIT) loc_ref_ = nullptr;
                 }
+                if (fail == FAIL_LIMIT) loc_ref_ = nullptr;
             }
         }
 

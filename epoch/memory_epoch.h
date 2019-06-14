@@ -40,7 +40,7 @@ private:
         uint32_t tid = FASTER::core::Thread::id();
         assert(tid <= context->pool->size());
         auto &queue = context->pool->operator[](tid);
-        queue.push(static_cast<Org*>(context->ptr));
+        queue.Push(static_cast<Org*>(context->ptr));
     }
 
 public:

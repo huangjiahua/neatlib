@@ -51,7 +51,7 @@ int main() {
             std::hash<size_t>,
             4,
             8
-            > ht{};
+            > ht(12);
     default_random_engine en(static_cast<unsigned int>(steady_clock::now().time_since_epoch().count()));
     uniform_int_distribution<size_t> dis(0, RANGE);
     std::size_t right = 0, right2 = 0, right3 = 0;

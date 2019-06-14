@@ -6,7 +6,7 @@
 using namespace std;
 
 int main() {
-    neatlib::LockFreeHashTable<int, int> ht;
+    neatlib::LockFreeHashTable<int, int> ht(4);
     for (int i = 0; i < 500; i++) ht.Insert(i, i);
     auto res = ht.Get(322);
     cout << res.second << endl;

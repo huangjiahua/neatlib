@@ -63,7 +63,10 @@ private:
         DataBlock data;
         DataNode *next = nullptr;
         DataNode *last = nullptr;
+        int64_t epoch = -1;
+
         DataNode(const Key &k, const T &m) : Node(NodeType::Data), data(k, m) {}
+
         ~DataNode() override = default;
     };
 
@@ -99,10 +102,15 @@ private:
             assert(tid <= ht.data_pool_.size());
             DataNodeQueue &queue = ht.data_pool_[tid];
             if (!queue.Empty()) {
-                DataNode *ptr = queue.Pop();
-                ptr->type = NodeType::Data;
-                ptr->data.init(key, mapped);
-                return ptr;
+                int64_t epoch = std::numeric_limits<int64_t>::max();
+                if (queue.Top()->epoch > 0)
+                    epoch = ht.epoch_.inner_epoch_.ComputeNewSafeToReclaimEpoch(ht.epoch_.inner_epoch_.current_epoch);
+                if (queue.Top()->epoch <= epoch) {
+                    DataNode *ptr = queue.Pop();
+                    ptr->type = NodeType::Data;
+                    ptr->data.init(key, mapped);
+                    return ptr;
+                }
             }
             return new DataNode(key, mapped);
         }
@@ -114,6 +122,7 @@ private:
             inline void operator()(Node *node) const {
                 uint32_t tid = FASTER::core::Thread::id();
                 assert(tid <= ht->data_pool_.size());
+                static_cast<DataNode *>(node)->epoch = -1;
                 ht->data_pool_[tid].Push(static_cast<DataNode *>(node));
             }
 
@@ -336,7 +345,12 @@ public:
             epoch_.EnterEpoch();
             return false;
         }
-        epoch_.BumpEpoch(static_cast<Node *>(locator.pos), data_pool_);
+        uint64_t epoch = epoch_.inner_epoch_.BumpCurrentEpoch();
+        DataNode *old = static_cast<DataNode*>(locator.pos);
+        old->epoch = epoch;
+        size_t tid = FASTER::core::Thread::id();
+        data_pool_[tid].Push(old);
+//        epoch_.BumpEpoch(static_cast<Node *>(locator.pos), data_pool_);
         return true;
     }
 
@@ -347,7 +361,12 @@ public:
             return false;
         }
         assert(locator.GetKey() == key);
-        epoch_.BumpEpoch(locator.pos, data_pool_);
+        uint64_t epoch = epoch_.inner_epoch_.BumpCurrentEpoch();
+        DataNode *old = static_cast<DataNode*>(locator.pos);
+        old->epoch = epoch;
+        size_t tid = FASTER::core::Thread::id();
+        data_pool_[tid].Push(old);
+//        epoch_.BumpEpoch(locator.pos, data_pool_);
         return true;
     }
 

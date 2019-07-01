@@ -44,6 +44,10 @@ public:
             tail_->next = nullptr;
         return ret;
     }
+
+    NODE *Top() {
+        return tail_;
+    }
 private:
     NODE *head_;
     NODE *tail_;

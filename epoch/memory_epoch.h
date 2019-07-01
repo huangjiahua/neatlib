@@ -32,7 +32,7 @@ public:
 
 template<typename T, typename Pool, typename Org>
 class MemoryEpoch {
-private:
+public:
     FASTER::core::LightEpoch inner_epoch_;
 
     static void delete_callback(FASTER::core::IAsyncContext *ctxt) {
